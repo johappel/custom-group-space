@@ -1,0 +1,95 @@
+.group-space-toolbar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgb(87, 98, 115);
+    padding: 0px;
+    border-radius: 5px;
+    margin-top: 0px;
+    z-index: 2;
+    position: relative;
+}
+
+.group-space-action {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin: 0 10px;
+    padding: 5px 10px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    gap: 3px;
+    color: #fff;
+}
+
+.group-space-action:hover {
+    background-color: #e0e0e0;
+    border-radius: 5px;
+    color: black;
+}
+
+.group-space-action span:not(.dashicons) {
+    font-size: 15px;
+    margin-bottom: 0;
+}
+
+#group-space-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.toolbar-modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 500px;
+    border-radius: 5px;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+    color: #000;
+    text-decoration: none;
+    cursor: pointer;
+}
+.toolbar-spacer {
+    color: #ccc;
+}
+.toolbar-spacer span {
+    display: inline;
+    margin: 0 10px;
+    width: 0px;
+    border: 2px solid #485365;
+}
+
+body.group-space #footer {
+    display: none;
+
+}
+@media screen and (max-width: 782px) {
+    .group-space-toolbar {
+        margin-right: 0;
+        justify-content: center;
+        align-items: center;
+        margin-top: 0;
+    }
+
+}
