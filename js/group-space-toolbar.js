@@ -42,7 +42,7 @@
             if (response.success) {
                 if(response.message){
                     this.$modalContent.html('<p>' + response.message + '</p>');
-                    this.$modal.show();
+                    this.$modal.css('display', 'flex');
                 }
             } else {
                 alert('Fehler: ' + response.message);

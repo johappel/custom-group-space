@@ -13,8 +13,8 @@ class aitoolbar
     }
 
     public function print_ai_toolbar(){
-        $prompst = get_field('prompts', 'options');
-        foreach ($prompst as $prompt) {
+        $prompts = get_field('prompts', 'options');
+        foreach ($prompts as $prompt) {
             if($prompt['active'])
             echo '<button class="group-space-action" data-action="'.$prompt['key'].'">
                 <span class="dashicons '.$prompt['icon'].'"></span>
@@ -26,38 +26,38 @@ class aitoolbar
 
         $post_id = get_the_ID();
 
+        $label = "Agenda erneuern";
+        $initialmeeting = get_post_meta($post_id, 'group_initial_meeting', true);
+        if($initialmeeting){
+            $label = "Neue Agenda";
+        }
 
         ob_start();
         ?>
         <div class="group-space-toolbar" data-post-id="<?php echo esc_attr($post_id); ?>">
             <button class="group-space-action" data-action="set-agenda">
                 <span class="dashicons dashicons-welcome-write-blog"></span>
-                <span>Neue Agenda</span>
+                <span><?php echo $label;?></span>
             </button>
-            <button class="group-space-action" data-action="list-protocols">
-                <span class="dashicons dashicons-admin-page"></span>
-                <span>Protokolle</span>
-            </button>
-            <button class="group-space-action" data-action="whiteboard">
-                <span class="dashicons dashicons-laptop"></span>
-                <span>Whiteboard</span>
-            </button>
-            <div class="toolbar-spacer"><span></span>KI-Tools: </div>
-            <?php $this->print_ai_toolbar(); ?>
 
-<!--            <button class="group-space-action" data-action="action1">-->
-<!--                <span class="dashicons dashicons-star-filled"></span>-->
-<!--                <span>Aktion 1</span>-->
-<!--            </button>-->
-<!--            <button class="group-space-action" data-action="action2">-->
-<!--                <span class="dashicons dashicons-heart"></span>-->
-<!--                <span>Aktion 2</span>-->
-<!--            </button>-->
-<!--            <button class="group-space-action" data-action="chat_answer">-->
-<!--                <span class="dashicons dashicons-format-chat"></span>-->
-<!--                <span>Chat</span>-->
-<!--            </button>-->
-            <!-- Fügen Sie hier weitere Buttons hinzu -->
+            <?php if($initialmeeting): ?>
+                <button class="group-space-action" data-action="list-protocols">
+                <span class="dashicons dashicons-admin-page"></span>
+                    <span>Protokolle</span>
+                </button>
+                <button class="group-space-action" data-action="whiteboard">
+                    <span class="dashicons dashicons-laptop"></span>
+                    <span>Whiteboard</span>
+                </button>
+                <div class="toolbar-spacer"><span></span>KI-Tools: </div>
+            <?php $this->print_ai_toolbar(); ?>
+            <?php else: ?>
+                <button class="group-space-action" data-action="set-initialmeeting">
+                    <span class="dashicons dashicons-saved"></span>
+                    <span>Wir sind fertig</span>
+                </button>
+
+            <?php endif; ?>
         </div>
 
         <div id="group-space-modal">

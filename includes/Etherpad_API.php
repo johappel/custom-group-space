@@ -218,6 +218,9 @@ class Etherpad_API {
         }
         return $this->make_request('getHTML', $params, 'html');
     }
+    public function appendHTML($padID, $html, $authorId = null){
+        return $this->setHTML($padID, $html, 1, $authorId);
+    }
 
     /**
      * @param $padID

@@ -48,12 +48,14 @@
 
 .toolbar-modal-content {
     background-color: #fefefe;
-    margin: 15% auto;
+    margin: auto auto;
     padding: 20px;
     border: 1px solid #888;
     width: 80%;
-    max-width: 500px;
+    max-width: 900px;
     border-radius: 5px;
+    overflow: auto;
+    max-block-size: 90%;
 }
 
 .close {

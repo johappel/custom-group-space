@@ -57,11 +57,13 @@ class GroupPad extends Etherpad_API
         }else {
             $this->group_id = (int)get_the_ID();
         }
-        if(!$group_id){
+        if(!$this->group_id){
             //should never happen
             error_log('No group ID found');
             return;
         }
+
+
         $this->is_valid = true;
         // KI-Bot
         $this->bot_author_id = get_option('etherpad_bot_author_id');
@@ -98,11 +100,26 @@ class GroupPad extends Etherpad_API
 
         $this->group_padID = get_post_meta($this->group_id, 'group_padID', true);
         if(!$this->group_padID || !is_string($this->group_padID)){
+
             $this->group_padID = $this->createGroupPad($this->group_padName, $this->pad_groupID, $this->author_id);
             update_post_meta($group_id, 'group_padID', $this->group_padID);
         }
+        $this->check_group_pad();
 
         $this->is_valid = true;
+    }
+    public function check_group_pad()
+    {
+        $bool = false;
+        $history = $this->get_history();
+        error_log($history);
+        if(!$history){
+            $agenda = $this->get_constitutional_Agenda(get_the_title($this->group_id));
+            $this->setHTML($this->group_padID, $agenda);
+            $this->add_history('Gruppe wurde eingerichtet');
+            $bool = true;
+        }
+        return $bool;
     }
     /**
      * @return string
@@ -136,41 +153,182 @@ class GroupPad extends Etherpad_API
      * @return string
      * Returns the HTML content of the Etherpad
      */
-    public function get_main_goal(){
-        $goal = get_post_meta($this->group_id, 'group_exerpt', true);
-        if(!$goal){
-            return false;
-        }else{
-            $main_goal = get_post_meta($this->group_id, 'group_main_goal', true);
-            if(!$main_goal){
-                $kontext ="\nBeschreibung der Gruppe:";
-                $kontext .= get_post_meta($this->group_id, 'group_context', true);
-                $kontext .= "\n\nBeschreibung der Herausforderung: $goal";
-
-                $main_goal = $this->getAiResponse('main-goal',$kontext);
-                update_post_meta($this->group_id, 'group_main_goal', $main_goal);
-            }
-            return $main_goal;
+    public function get_initial_meeting()
+    {
+        $meeting_timestamp = get_post_meta($this->group_id, 'group_initial_meeting', true);
+        if($meeting_timestamp){
+            return date('d.m.Y', $meeting_timestamp);
         }
+        return false;
     }
-    public function get_group_challenge(){
-        $description = get_post_meta($this->group_id, 'group_context', true);
-        if(!$description) {
-            return false;
+    public function set_initial_meeting()
+    {
+        $html = $this->getHTML($this->group_padID);
+
+        $config = new OpenAIConfig();
+        $config->apiKey = get_option('options_openai_api_key');
+        $config->model = get_option('options_openai_model','gpt-4o-mini');
+        $config->response_format = '{ "type": "json_schema", "json_schema": {...} }';
+        $chat = new OpenAIChat($config);
+
+        // Konvertiere HTML in Markdown
+        $converter = new League\HTMLToMarkdown\HtmlConverter();
+        $markdown = $converter->convert($html);
+
+
+        $prompt = "Extrahiere aus dem Inhalt Namen, Ziel, Herausforderungen und Aufgaben der Gruppe und gib sie als JSON-Objekt zurück in dieser Form zurück: ".
+            "{ \"name\": \"(Name der Gruppe)\", \"goal\": \"(Ziel der Gruppe)\", \"challenge\": \"(Herausforderungen und Aufgaben)\" } \n\n # Kontext: \n".$markdown;
+
+
+        $json = $chat->generateText($prompt);
+        error_log($json);
+        $json = str_replace('```json', '', $json);
+        $json = str_replace('```', '', $json);
+
+
+        $data = json_decode($json, true);
+
+        if($data){
+
+            update_post_meta($this->group_id, 'group_initial_meeting', time());
+            update_post_meta($this->group_id, 'group_title', $data['name']);
+            update_post_meta($this->group_id, 'group_goal', $data['goal']);
+            update_post_meta($this->group_id, 'group_content', $data['challenge']);
+            update_post_meta($this->group_id, 'group_challenge', $data['challenge']);
+
+
+            $group_post = get_post($this->group_id);
+
+            $post_array = array();
+            $post_array['ID'] = $group_post->ID;
+            $post_array['post_content'] = $data['challenge'];
+            $post_array['post_excerpt'] = $data['goal'];
+            $post_array['post_title'] = $data['name'];
+            $post_array['post_status'] = 'publish';
+            $post_array['post_type'] = 'group_post';
+
+            wp_update_post($post_array);
+
+            return $data;
+        }
+        error_log('No Data');
+    }
+    public function get_goal(){
+        $goal = get_post_meta($this->group_id, 'group_goal', true);
+        if(!$goal){
+            $challenge = $this->get_challenge();
+            $goal = get_post_meta($this->group_id, 'group_goal', true);
+        }
+        return $goal;
+    }
+    public function get_challenge($force = false){
+        $challenge = get_post_meta($this->group_id, 'group_challenge', true);
+        if($challenge && !$force){
+            return $challenge;
         }else{
-            $challenge = get_post_meta($this->group_id, 'group_challenge', true);
-            if(!$challenge){
-                $goal = get_post_meta($this->group_id, 'group_exerpt', true);
-                $kontext ="\nBeschreibung der Gruppe:";
-                $kontext .= $description;
-                $kontext .= "\n\nZiel: $goal";
-                $challenge = $this->ai()->generateText('Mit dem folgenden Text hat sich die  Gruppe selbst beschrieben: '.$kontext."\n\nFormuliere prägnant, welche Herausforderungen und Aufgaben die Gruppe beschäftigen");
-                update_post_meta($this->group_id, 'group-challenge', $challenge);
+            $group_post = get_post($this->group_id);
+            $pinwall_post_id = get_post_meta($this->group_id, '_pinwall_post', true);
+            if(!$force && empty($group_post->post_content) && $pinwall_post_id){
+                $pinwall_post = get_post($pinwall_post_id);
+                $kontext = $pinwall_post->post_content;
+                $comments= get_comments(array('post_id' => $pinwall_post_id));
+                if($comments){
+                    $kontext .= "\n\nKommentare:\n";
+                }
+                foreach ($comments as $comment){
+                    $kontext .= "\n\n".$comment->comment_content;
+                }
+                $challenge = $this->ai()->generateText('Folgender Beitrag hat dazu geführt, eine Arbeitsgruppe zu gründen: '.
+                    "\n\n".
+                    $kontext.
+                    "\n\n----\n\n".
+                    "Formuliere Herausforderungen und Aufgaben, die sich aus dem Inhalt und den Kommentaren ergeben"
+                );
+                $title = $this->ai()->generateText("Gib der Arbeitsgruppe einen Namen, der das Ziel und die Herausforderungen widerspiegelt: ".$challenge);
+                $goal = $this->ai()->generateText("Formuliere ein prägnantes Ziel zu folgenden Herausforderungen und Aufgaben: ".$challenge);
+
+            }else{
+                $group_content = get_post_meta($this->group_id, 'group_content', true);
+
+                $kontext = "Titel:\n\n". $group_post->post_title ."\n\nExerpt:\n\n". $group_post->post_excerpt ."\n\nKontent:\n\n".$group_content;
+                $challenge = $this->ai()->generateText('Folgender Inhalt liegt für eine Arbeitsgruppe vor: '.
+                    "\n\n".
+                    $kontext.
+                    "\n\n----\n\n".
+                    "Formuliere Herausforderungen und Aufgaben, die sich aus dem Inhalt und den Kommentaren ergeben"
+                );
+                $title = $this->ai()->generateText("Gib der Arbeitsgruppe einen Namen, der das Ziel und die Herausforderungen widerspiegelt: ".$challenge);
+                $goal = $this->ai()->generateText("Formuliere ein prägnantes Ziel zu folgenden Herausforderungen und Aufgaben: ".$challenge);
             }
+
+            update_post_meta($this->group_id, 'group_goal', $goal);
+            update_post_meta($this->group_id, 'group_content', $challenge);
+            update_post_meta($this->group_id, 'group_challenge', "Ziel dieser Arbeitsgruppe\n\n".$goal."\n\nHerausforderungen:\n\n".$challenge);
+
+            $group_post->post_content = $kontext;
+            $group_post->post_excerpt = $goal;
+            $group_post->post_title = $title;
+
+
+
+            $post_array = array();
+            $post_array['ID'] = $this->group_id;
+            $post_array['post_content'] = $kontext;
+            $post_array['post_excerpt'] = $goal;
+            $post_array['post_title'] = $title;
+            $post_array['post_status'] = 'publish';
+            $post_array['post_type'] = 'group_post';
+
+            wp_update_post($post_array);
+
+            wp_update_post($group_post);
             return $challenge;
         }
+
     }
 
+    public function add_progress($content){
+        $entry = [];
+        $entry['date'] = time();
+        $entry['content'] = $content;
+        add_post_meta($this->group_id, 'group_progress', $entry);
+    }
+    public function get_progress_feedback()
+    {
+        $logs = get_post_meta($this->group_id, 'group_progress' );
+        $history = "\n# Progress: \n";
+        if($logs){
+            foreach ($logs as $log){
+                $date = date('d.m.Y H:i', $log['date']);
+                $content = $log['content'];
+                $history .= "\n\n".$date.":\n".$content;
+            }
+        }
+        $prompt = "Als Moderator des Gruppenmeetings gibst du ein knappes Feedback zum bisherigen Verlauf der Meetings und hebst den Fortschritt im letzten Eintrag hervor, sofern dies die folgende Datenlage erlaubt: \n\n";
+        return $this->ai()->generateText($prompt.$history);
+    }
+
+    public function add_history($content){
+        $entry = [];
+        $entry['date'] = time();
+        $entry['content'] = $content;
+        add_post_meta($this->group_id, 'group_history', $entry);
+    }
+    public function get_history(){
+        $logs = get_post_meta($this->group_id, 'group_history' );
+        if(!$logs){
+            return false;
+        }
+        $history = "\n# Rückblick: \n";
+        if($logs){
+            foreach ($logs as $log){
+                $date = date('d.m.Y H:i', $log['date']);
+                $content = $log['content'];
+                $history .= "\n\n".$date.":\n".$content;
+            }
+        }
+        return $history;
+    }
     /**
      * @param $group_padID
      * @return string
@@ -187,16 +345,29 @@ class GroupPad extends Etherpad_API
         return false;
     }
 
+    public function add_comment($content){
+        wp_insert_comment(array(
+            'comment_post_ID' => $this->group_id,
+            'comment_approved' => 1,
+            'comment_content' => $content,
+            'comment_author' => 'KI-Bot',
+            'comment_author_email' => 'bot@nomail.com'
+        ));
+    }
 
-
-    private function set_constitutional_Agenda() {
+    public function set_constitutional_Agenda() {
 
         $post_id = $_POST['post_id'];
         $group = get_post($post_id);
-        $current_user = wp_get_current_user();
-
         $groupPad = new GroupPad($post_id);
 
+        $agenda = $this->get_constitutional_Agenda($group->post_title);
+        $groupPad->setHTML($groupPad->group_padID, $agenda);
+
+        return array('success' => true);
+
+    }
+    private function get_constitutional_Agenda($title){
         $tz = 'Europe/Berlin';
         $timestamp = time();
         $dt = new DateTime("now", new DateTimeZone($tz)); //first argument "must" be a string
@@ -204,17 +375,14 @@ class GroupPad extends Etherpad_API
         $today =  $dt->format('d.m.Y');
         $now =  $dt->format('d.m.Y, H:i');
 
-        $padID = $groupPad->get_group_padID();
+        $current_user = wp_get_current_user();
+
         $agenda = get_field('etherpad_initial_template', 'options');
         $agenda = str_replace('{TODAY}', $today, $agenda);
         $agenda = str_replace('{STARTTIME}', $now, $agenda);
-        $agenda = str_replace('{GROUPNAME}',$group->post_title , $agenda);
+        $agenda = str_replace('{GROUPNAME}',$title , $agenda);
         $agenda = str_replace('{USER}',$current_user->display_name, $agenda);
-
-        $groupPad->setHTML($padID, $agenda);
-
-        return array('success' => true);
-
+        return $agenda;
     }
     /**
      * @param $padID
