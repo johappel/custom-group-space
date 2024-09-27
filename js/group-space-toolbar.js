@@ -42,6 +42,7 @@
             if (response.success) {
                 if(response.message){
                     this.$modalContent.html('<p>' + response.message + '</p>');
+                    this.load_modal_content_scripts();
                     this.$modal.css('display', 'flex');
                 }
             } else {
@@ -51,6 +52,42 @@
 
         closeModal: function() {
             this.$modal.hide();
+        },
+
+        load_modal_content_scripts: function() {
+
+            $('.pad-version-link').on('click', function(e) {
+                e.preventDefault();
+                var $button = $(e.currentTarget);
+                var postId = $button.data('post-id');
+                var version = $button.data('version');
+
+
+                $.ajax({
+                    url: group_space_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'group_space_action',
+                        nonce: group_space_ajax.nonce,
+                        custom_action: 'open-pad',
+                        post_id: postId,
+                        timestamp: version
+                    },
+                    success: function(response) {
+
+                        if (response.success) {
+                            var modal = $('#group-space-modal');
+                            var modalContent = modal.find('.toolbar-modal-content div.inner_content');
+                            if(response.message){
+                                modalContent.html('<p>' + response.message + '</p>');
+                            }
+                        } else {
+                            alert('Fehler: ' + response.message);
+                        }
+                    }
+                });
+            });
+
         }
     };
 

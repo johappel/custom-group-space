@@ -35,6 +35,15 @@ class aitoolbar
         ob_start();
         ?>
         <div class="group-space-toolbar" data-post-id="<?php echo esc_attr($post_id); ?>">
+            <button class="group-space-action" data-action="save-pad">
+                <span class="dashicons dashicons-cloud-saved"></span>
+                <span>Speichern</span>
+            </button>
+            <button class="group-space-action" data-action="list-saved-pads">
+                <span class="dashicons dashicons-cloud-upload"></span>
+                <span>Öffnen</span>
+            </button>
+
             <button class="group-space-action" data-action="set-agenda">
                 <span class="dashicons dashicons-welcome-write-blog"></span>
                 <span><?php echo $label;?></span>

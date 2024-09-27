@@ -27,6 +27,16 @@ class GroupSpace_Ajax {
             case 'set-initialmeeting':
                 $response = $this->set_initial_meeting_data();
                 break;
+            case 'save-pad':
+                $response = $this->save_pad();
+                break;
+            case 'list-saved-pads':
+                $response = $this->list_saved_pads();
+                break;
+            case 'open-pad':
+                $timestamp = isset($_POST['timestamp']) ? intval($_POST['timestamp']) : 0;
+                $response = $this->open_pad($timestamp);
+                break;
             // Fügen Sie hier weitere Aktionen hinzu
             default:
                 $response = $this->handle_custom_actions($action);
@@ -34,6 +44,29 @@ class GroupSpace_Ajax {
         }
 
         wp_send_json($response);
+    }
+
+    private function save_pad() {
+        $post_id = $_POST['post_id'];
+        $groupPad = new GroupPad($post_id);
+        $groupPad->save_pad();
+        return array('success' => true, 'message' => 'Pad gespeichert');
+    }
+    private function list_saved_pads() {
+        $post_id = $_POST['post_id'];
+        $groupPad = new GroupPad($post_id);
+        $pads = $groupPad->list_saved_pads();
+        return array('success' => true, 'message' => $pads);
+    }
+    private function open_pad($timestamp) {
+        $post_id = $_POST['post_id'];
+        $groupPad = new GroupPad($post_id);
+        $content = $groupPad->get_pad($timestamp);
+        $groupPad->setHTML($groupPad->get_group_padID(), $content);
+        date_default_timezone_set('Europe/Berlin');
+        $date = date('d.m.Y H:i', $timestamp);
+
+        return array('success' => true, 'message' => 'Das Pad vom '.$date.' wurde wiederhergestellt');
     }
 
     private function set_initial_meeting_data() {
@@ -119,8 +152,6 @@ class GroupSpace_Ajax {
             $answer = $groupPad->ai()->generateText($prompt);
 
 
-            error_log('AI: '.$answer);
-            error_log('Output: '.$output);
             switch ($output){
                 case 'chat':
                     $groupPad->appendChatMessage($padID, $answer, $groupPad->botID());
@@ -209,8 +240,6 @@ class GroupSpace_Ajax {
         $agenda = str_replace('{STARTTIME}', $now, $agenda);
         $agenda = str_replace('{GROUPNAME}',$group->post_title , $agenda);
         $agenda = str_replace('{USER}',$current_user->display_name, $agenda);
-
-        error_log('Agenda: '.$agenda);
 
         $groupPad->setHTML($padID, $agenda,0,$groupPad->botID());
 

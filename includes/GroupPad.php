@@ -112,7 +112,6 @@ class GroupPad extends Etherpad_API
     {
         $bool = false;
         $history = $this->get_history();
-        error_log($history);
         if(!$history){
             $agenda = $this->get_constitutional_Agenda(get_the_title($this->group_id));
             $this->setHTML($this->group_padID, $agenda);
@@ -181,7 +180,6 @@ class GroupPad extends Etherpad_API
 
 
         $json = $chat->generateText($prompt);
-        error_log($json);
         $json = str_replace('```json', '', $json);
         $json = str_replace('```', '', $json);
 
@@ -287,6 +285,42 @@ class GroupPad extends Etherpad_API
 
     }
 
+    public function save_pad(){
+        $padhtml = $this->getHTML($this->group_padID);
+        $entry = [];
+        $entry['date'] = time();
+        $entry['content'] = $padhtml;
+        add_post_meta($this->group_id, 'group_pad', $entry);
+    }
+    public function get_pad($timestamp){
+        $logs = get_post_meta($this->group_id, 'group_pad' );
+        if($logs){
+            foreach ($logs as $log){
+                if($log['date'] == $timestamp){
+                    return $log['content'];
+                }
+            }
+        }
+
+        return false;
+    }
+    public function list_saved_pads(){
+        if(!get_post_meta($this->group_id, 'group_pad' ))
+            $this->save_pad();
+        $logs = get_post_meta($this->group_id, 'group_pad' );
+        $history = "";
+        if($logs){
+            foreach ($logs as $log){
+                date_default_timezone_set('Europe/Berlin');
+                $date = date('d.m.Y H:i', $log['date']);
+                $link = '<a class="pad-version-link" href="#'.$log['date'].'" data-post-id="'.$this->group_id.'" data-version="'.$log['date'].'">'.$date.'</a>';
+                $history = "<li>".$link."</li>".$history;
+            }
+        }
+        $history = "<h1>Gespeicherte Pads:</h1><ul>".$history;
+        $history .= "</ul>";
+        return $history;
+    }
     public function add_progress($content){
         $entry = [];
         $entry['date'] = time();
