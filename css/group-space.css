@@ -1,3 +1,38 @@
 body.group-space #header {
     display: none;
 }
+.ct-container-fluid.group-space-header{
+    padding: 0;
+    display: grid;
+    grid-template-columns:200px auto 200px;
+    margin-top: -0px;
+    margin-bottom: 5px;
+    color: #fff;
+    font-size: 20px;
+}
+.group-space-header .blogname{
+    text-align: left;
+    align-content: center;
+}
+.group-space-header .groupname{
+    text-align: right;
+    align-content: center;
+}
+.group-space-header .conference-button{
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 2px;
+    margin-top: 2px;
+}
+.group-space-header .conference-button .button:not(:hover){
+    background: #1d2327;
+    border:1px solid #ddd;
+}
+.group-space-header .conference-button .button
+{
+    padding: 5px;
+
+}
+.group-space-header .conference-button .dashicons-microphone{
+    color: var(--akcent);
+}
