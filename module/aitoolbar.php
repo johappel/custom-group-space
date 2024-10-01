@@ -31,7 +31,7 @@ class aitoolbar
         if($initialmeeting){
             $label = "Neue Agenda";
         }
-
+        $group_tool_ai_integration = (boolean)  get_field('group_tool_ai_integration', $post_id);
         ob_start();
         ?>
         <div class="group-space-toolbar" data-post-id="<?php echo esc_attr($post_id); ?>">
@@ -43,29 +43,30 @@ class aitoolbar
                 <span class="dashicons dashicons-cloud-upload"></span>
                 <span>Öffnen</span>
             </button>
-
-            <button class="group-space-action" data-action="set-agenda">
-                <span class="dashicons dashicons-welcome-write-blog"></span>
-                <span><?php echo $label;?></span>
-            </button>
-
-            <?php if($initialmeeting): ?>
-                <button class="group-space-action" data-action="list-protocols">
-                <span class="dashicons dashicons-admin-page"></span>
-                    <span>Protokolle</span>
-                </button>
-                <button class="group-space-action" data-action="whiteboard">
-                    <span class="dashicons dashicons-laptop"></span>
-                    <span>Whiteboard</span>
-                </button>
-                <div class="toolbar-spacer"><span></span>KI-Tools: </div>
-            <?php $this->print_ai_toolbar(); ?>
-            <?php else: ?>
-                <button class="group-space-action" data-action="set-initialmeeting">
-                    <span class="dashicons dashicons-saved"></span>
-                    <span>Wir sind fertig</span>
+            <?php if($group_tool_ai_integration):?>
+                <button class="group-space-action" data-action="set-agenda">
+                    <span class="dashicons dashicons-welcome-write-blog"></span>
+                    <span><?php echo $label;?></span>
                 </button>
 
+                <?php if($initialmeeting): ?>
+                    <button class="group-space-action" data-action="list-protocols">
+                    <span class="dashicons dashicons-admin-page"></span>
+                        <span>Protokolle</span>
+                    </button>
+                    <button class="group-space-action" data-action="whiteboard">
+                        <span class="dashicons dashicons-laptop"></span>
+                        <span>Whiteboard</span>
+                    </button>
+                    <div class="toolbar-spacer"><span></span>KI-Tools: </div>
+                <?php $this->print_ai_toolbar(); ?>
+                <?php else: ?>
+                    <button class="group-space-action" data-action="set-initialmeeting">
+                        <span class="dashicons dashicons-saved"></span>
+                        <span>Wir sind fertig</span>
+                    </button>
+
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 

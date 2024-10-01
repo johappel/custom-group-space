@@ -9,11 +9,6 @@ class GroupSpace_Ajax {
 
     public function handle_ajax_request() {
         check_ajax_referer('group_space_nonce', 'nonce');
-
-
-
-
-
         $action = isset($_POST['custom_action']) ? sanitize_text_field($_POST['custom_action']) : '';
         $response = array('success' => false, 'message' => '');
 
