@@ -54,10 +54,7 @@ class aitoolbar
                     <span class="dashicons dashicons-admin-page"></span>
                         <span>Protokolle</span>
                     </button>
-                    <button class="group-space-action" data-action="whiteboard">
-                        <span class="dashicons dashicons-laptop"></span>
-                        <span>Whiteboard</span>
-                    </button>
+
                     <div class="toolbar-spacer"><span></span>KI-Tools: </div>
                 <?php $this->print_ai_toolbar(); ?>
                 <?php else: ?>
