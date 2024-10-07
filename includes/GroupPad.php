@@ -168,6 +168,8 @@ class GroupPad extends Etherpad_API
         $config->apiKey = get_option('options_openai_api_key');
         $config->model = get_option('options_openai_model','gpt-4o-mini');
         $config->response_format = '{ "type": "json_schema", "json_schema": {...} }';
+        $config->temperature = 0.2;
+        //$config->response_format = '{ "type": "json_object", "json_schema": {...} }';
         $chat = new OpenAIChat($config);
 
         // Konvertiere HTML in Markdown
@@ -175,16 +177,20 @@ class GroupPad extends Etherpad_API
         $markdown = $converter->convert($html);
 
 
-        $prompt = "Extrahiere aus dem Inhalt Namen, Ziel, Herausforderungen und Aufgaben der Gruppe und gib sie als JSON-Objekt zurück in dieser Form zurück: ".
-            "{ \"name\": \"(Name der Gruppe)\", \"goal\": \"(Ziel der Gruppe)\", \"challenge\": \"(Herausforderungen und Aufgaben)\" } \n\n # Kontext: \n".$markdown;
+        $default_prompt = "Extrahiere aus dem Inhalt Namen, Ziel, Herausforderungen und Aufgaben der Gruppe und gib sie als JSON-Objekt zurück in dieser Form zurück: ".
+            "{ \"name\": \"(Name der Gruppe)\", \"goal\": \"(Ziel der Gruppe)\", \"challenge\": \"(Herausforderungen und Aufgaben)\" } \n\n # Kontext: {context}\n";
+
+        $prompt = $this->get_assistant_prompt('initial_meeting_extraction',['context'=>$markdown],$default_prompt);
 
 
         $json = $chat->generateText($prompt);
-        $json = str_replace('```json', '', $json);
-        $json = str_replace('```', '', $json);
-
-
-        $data = json_decode($json, true);
+        if(is_string($json)){
+            $json = str_replace('```json', '', $json);
+            $json = str_replace('```', '', $json);
+            $data = json_decode($json, true);
+        }else{
+            $data = $json;
+        }
 
         if($data){
 
@@ -236,14 +242,22 @@ class GroupPad extends Etherpad_API
                 foreach ($comments as $comment){
                     $kontext .= "\n\n".$comment->comment_content;
                 }
-                $challenge = $this->ai()->generateText('Folgender Beitrag hat dazu geführt, eine Arbeitsgruppe zu gründen: '.
-                    "\n\n".
-                    $kontext.
-                    "\n\n----\n\n".
-                    "Formuliere Herausforderungen und Aufgaben, die sich aus dem Inhalt und den Kommentaren ergeben"
-                );
-                $title = $this->ai()->generateText("Gib der Arbeitsgruppe einen Namen, der das Ziel und die Herausforderungen widerspiegelt: ".$challenge);
-                $goal = $this->ai()->generateText("Formuliere ein prägnantes Ziel zu folgenden Herausforderungen und Aufgaben: ".$challenge);
+                //Herausforderungen und Aufgaben
+                $default_prompt = 'Folgender Beitrag hat dazu geführt, eine Arbeitsgruppe zu gründen: '.
+                    "\n\n{context}\n\n----\n\n".
+                    "Formuliere Herausforderungen und Aufgaben, die sich aus dem Inhalt und den Kommentaren ergeben";
+                $prompt = $this->get_assistant_prompt('get_challenge_challenges',['context'=>$kontext],$default_prompt);
+                $challenge = $this->ai()->generateText($prompt);
+
+                //Name der Gruppe
+                $default_prompt = "Gib der Arbeitsgruppe einen Namen, der das Ziel und die Herausforderungen widerspiegelt: {context}";
+                $prompt = $this->get_assistant_prompt('get_challenge_name',['context'=>$challenge],$default_prompt);
+                $title = $this->ai()->generateText($prompt);
+
+                //Ziel der Gruppe
+                $default_prompt = "Formuliere zu folgenden Herausforderungen und Aufgaben der Arbeitsgruppe ein prägnantes Ziel: {context}";
+                $prompt = $this->get_assistant_prompt('get_challenge_goal',['context'=>$challenge],$default_prompt);
+                $goal = $this->ai()->generateText($prompt);
 
             }else{
                 $group_content = get_post_meta($this->group_id, 'group_content', true);
@@ -338,9 +352,30 @@ class GroupPad extends Etherpad_API
                 $history .= "\n\n".$date.":\n".$content;
             }
         }
-        $prompt = "Als Moderator des Gruppenmeetings gibst du ein knappes Feedback zum bisherigen Verlauf der Meetings und hebst den Fortschritt im letzten Eintrag hervor, sofern dies die folgende Datenlage erlaubt: \n\n";
-        return $this->ai()->generateText($prompt.$history);
+        $default_prompt = "Als Moderator des Gruppenmeetings gibst du ein knappes " .
+            "Feedback zum bisherigen Verlauf der Meetings und hebst den Fortschritt " .
+            "im letzten Eintrag hervor, sofern dies die folgende Datenlage erlaubt: \n\n {context}";
+
+        $prompt = $this->get_assistant_prompt(__FUNCTION__,['context'=>$history], $default_prompt);
+        return $this->ai()->generateText($prompt);
+
     }
+
+    public function get_assistant_prompt($function,$args ,$defaut_prompt=""){
+        $assistants = get_field('assist', 'options');
+        foreach ($assistants as $assistant){
+            if($assistant['key'] == $function){
+
+                foreach ($args as $key => $value){
+                    $assistant['prompt'] = str_replace('{'.$key.'}', $value, $assistant['prompt']);
+                }
+
+                return $assistant['prompt'];
+            }
+        }
+        return $defaut_prompt;
+    }
+
 
     public function add_history($content){
         $entry = [];
@@ -525,6 +560,162 @@ class GroupPad extends Etherpad_API
         $context = "\n---- \n#Kontext:\n$context ----\n";
 
         return $prompts[$prompt].$context;
+    }
+
+    public function extractHTML($html, $term) {
+        $dom = new DOMDocument();
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $xpath = new DOMXPath($dom);
+
+        $headings = $xpath->query("//h1|//h2|//h3|//h4|//h5|//h6");
+        $results = [];
+
+        foreach ($headings as $index => $heading) {
+            if (stripos($heading->textContent, $term) !== false) {
+                $title = $heading->textContent;
+                $content = '';
+                $currentNode = $heading->nextSibling;
+                $headingLevel = substr($heading->nodeName, 1);
+
+                while ($currentNode) {
+                    if ($currentNode->nodeType === XML_ELEMENT_NODE &&
+                        preg_match('/h[1-6]/', $currentNode->nodeName) &&
+                        substr($currentNode->nodeName, 1) <= $headingLevel) {
+                        break;
+                    }
+                    $content .= $dom->saveHTML($currentNode);
+                    $currentNode = $currentNode->nextSibling;
+                }
+
+                $results[] = [$title, trim($content)];
+            }
+        }
+
+        return $results;
+    }
+
+    public function appendHTML($html, $search_term, $append_html="") {
+        $dom = new DOMDocument();
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $xpath = new DOMXPath($dom);
+
+        $headings = $xpath->query("//h1|//h2|//h3|//h4|//h5|//h6");
+
+        foreach ($headings as $heading) {
+            if (stripos($heading->textContent, $search_term) !== false) {
+                $currentNode = $heading->nextSibling;
+                $headingLevel = substr($heading->nodeName, 1);
+
+                while ($currentNode) {
+                    $nextNode = $currentNode->nextSibling;
+                    if ($currentNode->nodeType === XML_ELEMENT_NODE &&
+                        preg_match('/h[1-6]/', $currentNode->nodeName) &&
+                        substr($currentNode->nodeName, 1) <= $headingLevel) {
+                        break;
+                    }
+                    $currentNode = $nextNode;
+                }
+
+                $fragment = $dom->createDocumentFragment();
+                @$fragment->appendXML($append_html);
+
+                if ($currentNode) {
+                    $currentNode->parentNode->insertBefore($fragment, $currentNode);
+                } else {
+                    $heading->parentNode->appendChild($fragment);
+                }
+
+                break;  // Nur den ersten gefundenen Abschnitt modifizieren
+            }
+        }
+
+        return $dom->saveHTML();
+    }
+
+    public function replaceHTML($html, $search_term, $replace_html) {
+        $dom = new DOMDocument();
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $xpath = new DOMXPath($dom);
+
+        $headings = $xpath->query("//h1|//h2|//h3|//h4|//h5|//h6");
+
+        foreach ($headings as $heading) {
+            if (stripos($heading->textContent, $search_term) !== false) {
+                $currentNode = $heading->nextSibling;
+                $headingLevel = substr($heading->nodeName, 1);
+                $nodesToRemove = [];
+
+                while ($currentNode) {
+                    if ($currentNode->nodeType === XML_ELEMENT_NODE &&
+                        preg_match('/h[1-6]/', $currentNode->nodeName) &&
+                        substr($currentNode->nodeName, 1) <= $headingLevel) {
+                        break;
+                    }
+                    $nodesToRemove[] = $currentNode;
+                    $currentNode = $currentNode->nextSibling;
+                }
+
+                // Entfernen der alten Inhalte
+                foreach ($nodesToRemove as $node) {
+                    $node->parentNode->removeChild($node);
+                }
+
+                // Einfügen des neuen Inhalts
+                $fragment = $dom->createDocumentFragment();
+                @$fragment->appendXML($replace_html);
+                $heading->parentNode->insertBefore($fragment, $currentNode);
+
+                break;  // Nur den ersten gefundenen Abschnitt ersetzen
+            }
+        }
+
+        return $dom->saveHTML();
+    }
+    /**
+     * Function to search for a specific term in the content of the Group-Pad pad and return the first pad that matches the search term.
+     * @param string $term The term to search for in the pad content.
+     * @return array An array containing the title and content of the first pad that matches the search term.
+     */
+    public function search_pad($term, $padID = null) {
+        if(!$padID){
+            $padID = $this->group_padID;
+        }
+        $html = $this->getHTML($padID);
+        //$results = $this->searchHeadersByTerm($html, $term);
+        $results = $this->extractHTML($html, $term);
+
+        if(empty($results)|| count($results) == 0){
+            return ['title'=>"", 'content'=>""];
+        }
+
+        $result['title'] = $results[0][0];
+        $result['content'] = $results[0][1];
+
+        //$result['content'] = '<h1>'.$result['title'].'</h1>'.$result['content'];
+        return $result;
+
+    }
+    public function append_pad($term, $newContent, $padID = null) {
+        if(!$padID){
+            $padID = $this->group_padID;
+        }
+
+        $html = $this->getHTML($padID);
+        $newHtml = $this->appendHTML($html, $term, $newContent);
+        //$this->setHTML($padID, $newHtml);
+        return $newHtml;
+
+    }
+    public function replace_pad($term, $newContent, $padID = null) {
+        if(!$padID){
+            $padID = $this->group_padID;
+        }
+
+        $html = $this->getHTML($padID);
+        $newHtml = $this->replaceHTML($html, $term, $newContent);
+        //$this->setHTML($padID, $newHtml);
+        return $newHtml;
+
     }
 
 }

@@ -94,7 +94,11 @@ class GroupSpace_Ajax {
         $padID = $groupPad->get_group_padID();
         $messages = $groupPad->getChatHistory($padID);
 
-        $etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getText($padID);
+        //$etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getText($padID);
+        $etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
+
+
+
         $chat = "\n\n#Chatchachrichten:\n".$messages;
 
 
@@ -103,19 +107,47 @@ class GroupSpace_Ajax {
         $message= (string) $prompt_arr['message'];
         $use_context = $prompt_arr['context'];
         $output = (string) $prompt_arr['output'];
+        $description = (string) $prompt_arr['description'];
         $prompt = (string) $prompt_arr['prompt'];
 
         $is_onetime= $prompt_arr['singleplay'];
         if(get_post_meta($group_id, 'ai_'.$prompt_arr['key'], true) && $is_onetime){
             return array('success' => false, 'message' => 'Diese Aktion kann nur einmal ausgeführt werden');
         }
-        if($prompt_arr['key'] == 'log'){
-            $empty_agenda = get_field('etherpad_agenda_template', 'options');
-            $pre_prompt = "Für das Meeting wurde deiner Gruppe folgendes Agendaformular zur Verfügung gestellt: \n\n```";
-            $pre_prompt .= $empty_agenda .'```';
-            $pre_prompt .= "\n\Dieses Formular wurde ausgefüllt: \n\n";
-            $prompt = $pre_prompt.$prompt;
+        switch ($prompt_arr['key']){
+            case 'log':
+                $pad = $groupPad->search_pad('Protokoll');
+                if(!$pad['content']){
+                    $pad = "";
+                    $empty_agenda = get_field('etherpad_agenda_template', 'options');
+                    $pre_prompt = "Für das Meeting wurde deiner Gruppe folgendes Agendaformular zur Verfügung gestellt: \n\n```";
+                    $pre_prompt .= $empty_agenda .'```';
+                    $pre_prompt .= "\n\Dieses Formular wurde ausgefüllt: \n\n";
+                    $prompt = $pre_prompt.$prompt;
+                }
+                break;
+            case 'tops-check':
+                $pad = $groupPad->search_pad('Tagesordnungspunkte');
+                break;
+            case 'meeting-feedback':
+                $pad = $groupPad->search_pad('Agenda');
+                break;
+            case 'progress':
+                $pad = $groupPad->search_pad('Fortschritt');
+
+                break;
+            case 'share':
+                $pad = $groupPad->search_pad('Teilen');
+
+                break;
+            default:
+                $pad = [];
         }
+        $pad_context = $pad['content'];
+        $response['success'] = true;
+        $response['message'] =  $description ;
+        return $response;
+
 
         foreach ($use_context as $context) {
             switch ($context){
@@ -129,7 +161,7 @@ class GroupSpace_Ajax {
                     $prompt .= $groupPad->get_history();;
                     break;
                 case 'pad':
-                    $prompt .= $etherpad;
+                    $prompt .= $pad_context;
                     break;
                 case 'chat':
                     $prompt .= $chat;
@@ -146,6 +178,10 @@ class GroupSpace_Ajax {
         if(!empty($prompt)){
             $answer = $groupPad->ai()->generateText($prompt);
 
+            //Protokoll speichern
+            if($prompt_arr['key'] == 'log'){
+                $groupPad->add_history($answer);
+            }
 
             switch ($output){
                 case 'chat':
