@@ -10,7 +10,7 @@ class GroupSpace_Ajax {
     public function handle_ajax_request() {
         check_ajax_referer('group_space_nonce', 'nonce');
         $action = isset($_POST['custom_action']) ? sanitize_text_field($_POST['custom_action']) : '';
-        $response = array('success' => false, 'message' => '');
+
 
         switch ($action) {
             case 'set-agenda':
@@ -75,33 +75,25 @@ class GroupSpace_Ajax {
     {
         $response = array('success' => false, 'message' => 'Aktion nicht gefunden');
 
-        $post_id = $_POST['post_id'];
+        $post_id = (int) $_POST['post_id'];
+        $modal_title = isset($_POST['modal_title']) ? sanitize_title($_POST['modal_title']) : '';
+        if(!$post_id){
+            return array('success' => false, 'message' => 'Gruppe nicht gefunden');
+        }
         $groupPad = new GroupPad($post_id);
 
         $prompts = get_field('prompts', 'options');
         foreach ($prompts as $prompt) {
             if ($prompt['active']) {
                 if ($prompt['key'] == $action) {
-                    $response = $this->handle_ai_action($prompt, $groupPad, $post_id);
+                    $response = $this->handle_ai_action($prompt, $groupPad, $post_id,$modal_title);
                 }
             }
         }
-
         return $response;
 
     }
-    private function handle_ai_action($prompt_arr, $groupPad, $group_id){
-        $padID = $groupPad->get_group_padID();
-        $messages = $groupPad->getChatHistory($padID);
-
-        //$etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getText($padID);
-        $etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
-
-
-
-        $chat = "\n\n#Chatchachrichten:\n".$messages;
-
-
+    private function handle_ai_action($prompt_arr, $groupPad, $group_id, $modal_title=null) {
 
         $label = (string) $prompt_arr['label'];
         $message= (string) $prompt_arr['message'];
@@ -109,12 +101,48 @@ class GroupSpace_Ajax {
         $output = (string) $prompt_arr['output'];
         $description = (string) $prompt_arr['description'];
         $prompt = (string) $prompt_arr['prompt'];
+        $action = (string) $prompt_arr['key'];
+
+        if($modal_title){
+            // Wenn ein Modal-Titel übergeben wurde, wird ein Modal geöffnet, der Titel wird als Überschrift verwendet,
+            // eine Beschreibung der Aktion angezeigt und ein OK-Button, um diese Aktion tatsächlich auszuführen,
+            // oder ein Abbrechen-Button um die Aktion nicht auszuführen.
+            $response = array(
+                'success' => true,
+                'message' => $description,
+                'buttons' => array(
+                    array(
+                        'label' => 'OK',
+                        'action' => $action,
+                        'postId' => $group_id
+                    ),
+                    array(
+                        'label' => 'Abbrechen',
+                        'action' => 'close'
+
+                    )
+                )
+            );
+            return $response;
+
+        }
+
+
+        $padID = $groupPad->get_group_padID();
+        $messages = $groupPad->getChatHistory($padID);
+        $etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
+        $chat = "\n\n#Chatchachrichten:\n".$messages;
 
         $is_onetime= $prompt_arr['singleplay'];
         if(get_post_meta($group_id, 'ai_'.$prompt_arr['key'], true) && $is_onetime){
             return array('success' => false, 'message' => 'Diese Aktion kann nur einmal ausgeführt werden');
         }
-        switch ($prompt_arr['key']){
+
+        $pads =[];
+        $append_output = false;
+        $replace_output = false;
+        $do_share_pinwall_comment = false;
+        switch ($action){
             case 'log':
                 $pad = $groupPad->search_pad('Protokoll');
                 if(!$pad['content']){
@@ -127,25 +155,62 @@ class GroupSpace_Ajax {
                 }
                 break;
             case 'tops-check':
-                $pad = $groupPad->search_pad('Tagesordnungspunkte');
+                $pads[] = $groupPad->search_pad('Tagesordnungspunkte');
                 break;
             case 'meeting-feedback':
-                $pad = $groupPad->search_pad('Agenda');
+                $pads[] = $groupPad->search_pad('Agenda');
+                $feedback = $groupPad->search_pad('Feedback');;
+                if($feedback){
+                    $replace_output = 'Feedback';
+                }
+
                 break;
             case 'progress':
-                $pad = $groupPad->search_pad('Fortschritt');
+                $pads[] = $groupPad->search_pad('Agenda');
+                $progress = $groupPad->search_pad('Fortschritt');
+                if ($progress) {
+                    $append_output = 'Fortschritt';
+                    $prompt .= "\n\n Du hast bereits den Fortschritt analysiert, ergänze nur wenn etwas fehlt. Hier deine Vorhergehende Analyse: \n\n".$progress['content'];
+                }
 
                 break;
             case 'share':
-                $pad = $groupPad->search_pad('Teilen');
+                $share = $groupPad->search_pad('Teilen');
+                if($share){
+                    $response = array(
+                        'success' => true,
+                        'message' => '<strong>Eure Mitteilung an die Community</strong>: <br>'.$share['content'].'<hr>Ich mache jetzt daraus einen Kommentar auf der Pinnwand.',
+                        'buttons' => array(
+                            array(
+                                'label' => 'OK',
+                                'action' => $action,
+                                'postId' => $group_id
+                            ),
+                            array(
+                                'label' => 'Abbrechen',
+                                'action' => 'close'
+
+                            )
+                        )
+                    );
+
+                }else{
+                    $pads[] = $groupPad->search_pad('Agenda');
+                }
 
                 break;
             default:
-                $pad = [];
+                $pads[] = ['content' => ''];
         }
-        $pad_context = $pad['content'];
+        $pad_context = '';
+        foreach ($pads as $pad) {
+            if($pad['content']){
+                $pad_context .= "<h2>".$pad['title']."</h2>".$pad['content'];
+            }
+        }
+
         $response['success'] = true;
-        $response['message'] =  $description ;
+        $response['message'] =  'Die Aktion '.$label.' wird derzeit überarbeitet und ist in Kürze wieder verfügbar. <h4>Kontext:</h4>'.$pad_context;
         return $response;
 
 

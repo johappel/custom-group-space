@@ -10,8 +10,10 @@
         cacheDom: function() {
             this.$toolbar = $('.group-space-toolbar');
             this.$modal = $('#group-space-modal');
-            this.$modalContent = this.$modal.find('.toolbar-modal-content div.inner_content');
-            this.$closeButton = this.$modal.find('.toolbar-modal-content .close');
+            this.$modalContent = this.$modal.find('.inner_content');
+            this.$modalTitle = this.$modal.find('.modal-title');
+            this.$closeButton = this.$modal.find('.close');
+            this.$modalFooter = this.$modal.find('.modal-footer');
         },
 
         bindEvents: function() {
@@ -24,24 +26,33 @@
             var $button = $(e.currentTarget);
             var action = $button.data('action');
             var postId = this.$toolbar.data('post-id');
+            var title = $button.data('title');
 
-            $.ajax({
-                url: group_space_ajax.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'group_space_action',
-                    nonce: group_space_ajax.nonce,
-                    custom_action: action,
-                    post_id: postId
-                },
-                success: this.handleResponse.bind(this)
-            });
+            if(action !== 'close') {
+                if(title !== undefined) {
+                    this.$modalTitle.text('KI-Moderatorin: ' + title);
+                }
+
+                $.ajax({
+                    url: group_space_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'group_space_action',
+                        nonce: group_space_ajax.nonce,
+                        custom_action: action,
+                        post_id: postId,
+                        modal_title: title
+                    },
+                    success: this.handleResponse.bind(this)
+                });
+            }
         },
 
         handleResponse: function(response) {
             if (response.success) {
                 if(response.message){
                     this.$modalContent.html('<p>' + response.message + '</p>');
+                    this.setModalButtons(response.buttons);
                     this.load_modal_content_scripts();
                     this.$modal.css('display', 'flex');
                 }
@@ -50,11 +61,37 @@
             }
         },
 
+        setModalButtons: function(buttons) {
+            this.$modalFooter.empty();
+            if (buttons && buttons.length) {
+                buttons.forEach(function(button) {
+                    var $btn = $('<button>', {
+                        text: button.label,
+                        class: [button.action, 'button'].join(' '),
+                        'data-action': button.action,
+                        'data-post-id': button.postId
+                    });
+                    this.$modalFooter.append($btn);
+                }.bind(this));
+            }
+        },
+
+
         closeModal: function() {
             this.$modal.hide();
         },
 
         load_modal_content_scripts: function() {
+            var thiz = this;
+
+            $('.close.button').on('click', (e)=>{
+                thiz.closeModal()
+            });
+
+            $('.modal-footer button').on('click', function(e) {
+                e.preventDefault();
+                thiz.handleAction(e);
+            });
 
             $('.pad-version-link').on('click', function(e) {
                 e.preventDefault();
