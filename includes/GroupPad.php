@@ -450,7 +450,7 @@ class GroupPad extends Etherpad_API
         if(!$post_id){
             $post_id = $this->group_id;
         }
-        $pre_content = "<strong>Bericht aus dem Meeting der Arbeitsgruppe: ".get_the_title($this->group_id)."<strong><br>";
+        $pre_content = "<strong>Bericht aus dem Meeting der Arbeitsgruppe: ".get_the_title($this->group_id)."</strong><br>";
         wp_insert_comment(array(
             'comment_post_ID' => $post_id,
             'comment_approved' => 1,

@@ -105,7 +105,7 @@ class GroupSpace_Ajax {
             case 'do_share':
                 $share = $groupPad->search_pad('Teilen');
                 if($share) {
-                    $groupPad->add_comment($share['content']);
+                    $groupPad->add_comment($this->$share['content']);
                     $response['success'] = true;
                     $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'];
                 }
@@ -191,15 +191,6 @@ class GroupSpace_Ajax {
             case 'progress':
                 $outputs[] = 'progress';
                 $outputs[] = 'message';
-//            case 'do_add_log':
-//                $protokoll =  $groupPad->search_pad('Protokoll');
-//                $protokoll = $protokoll['content'];
-//                if($protokoll) {
-//                    $groupPad->add_history($protokoll);
-//                    $response['success'] = true;
-//                    $response['message'] =  'Protokoll wurde gespeichert';
-//                    return $response;
-//                }
                 break;
             case 'log':
                 $protokoll =  $groupPad->search_pad('Protokoll');
@@ -250,15 +241,6 @@ class GroupSpace_Ajax {
                 $pads[] = $groupPad->search_pad('Ergebnisse');
 
                 break;
-//            case 'do_share':
-//                    $share = $groupPad->search_pad('Teilen');
-//                    if($share) {
-//                        $groupPad->add_comment($share['content']);
-//                        $response['success'] = true;
-//                        $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'];
-//                        return $response;
-//                    }
-//                break;
             case 'share':
                 $share = $groupPad->search_pad('Teilen');
                 if($share && !empty(trim($share['content']))) {
@@ -363,11 +345,6 @@ class GroupSpace_Ajax {
                 $response['message'] = $message .= '<h3>Antwort:</h3>'.$this->markdown_to_html($answer);
                 return $response;
             }
-
-            //Protokoll speichern
-//            if($prompt_arr['key'] == 'log'){
-//                $groupPad->add_history($answer);
-//            }
 
             foreach ($outputs as $k=>$output) {
 
