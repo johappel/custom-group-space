@@ -1,8 +1,10 @@
 <?php
 require_once 'Etherpad_API.php';
+require_once 'OpenAIClient.php';
 require_once plugin_dir_path(__DIR__) . '/vendor/autoload.php'; // Ensure autoload is included
-use LLPhant\OpenAIConfig;
-use LLPhant\Chat\OpenAIChat;
+//use LLPhant\OpenAIConfig;
+//use LLPhant\Chat\OpenAIChat;
+use League\HTMLToMarkdown\HtmlConverter;
 
 class GroupPad extends Etherpad_API
 {
@@ -15,6 +17,7 @@ class GroupPad extends Etherpad_API
     protected $group_padID;
     protected $author_id;
     protected $bot_author_id;
+    protected $bot_name;
 
     protected $api_version = '1.3.0';
     protected $api_url;
@@ -26,19 +29,27 @@ class GroupPad extends Etherpad_API
 
         if(!class_exists('OpenAIConfig')){
             require_once plugin_dir_path(__DIR__) . '/vendor/theodo-group/llphant/src/OpenAIConfig.php';
-
-
         }
-        $config = new OpenAIConfig();
-        $config->apiKey = get_option('options_openai_api_key');
-        $config->model = get_option('options_openai_model','gpt-4o-mini');
-        $this->chat = new OpenAIChat($config);
+
+//        $config = new OpenAIConfig();
+//        $config->model = get_option('options_openai_model','gpt-4o-mini-2024-07-18');
+//        $config->apiKey = get_option('options_openai_api_key');
+//        if(!$config->apiKey){
+//            new WP_Error('no_api_key', 'No OPENAI API Key found');
+//            return;
+//        }
+//        $this->chat = new OpenAIChat($config);
+        $system_prompt = "Du moderierst Schulentwicklung in evangelischen Schulen, förderst pädagogische Konzepte, " .
+            "digitale Tools und KI-Einsatz. " .
+            "Du vermittelst praxisnah Methoden, stärkst evangelische Werte, Vielfalt und interreligiösen Dialog. " .
+            "Du kennst deutsche Bildungsstandards und schulrechtliche Rahmenbedingungen.";
+        $model = get_option('options_openai_model','gpt-4o-mini-2024-07-18');
+        $system_prompt = get_option('options_system_prompt',$system_prompt);
+        $this->chat = new OpenAIClient($model);
+        $this->chat->setSystemMessage($system_prompt);
+
 
         $this->api_key = get_option('options_pad_api_key');
-        if(!$this->api_key){
-            new WP_Error('no_api_key', 'No OPENAI API Key found');
-            return;
-        }
         $this->base_url = get_option('options_pad_base_url');
         if(!$this->base_url){
             // create Admin notice
@@ -67,10 +78,10 @@ class GroupPad extends Etherpad_API
         $this->is_valid = true;
         // KI-Bot
         $this->bot_author_id = get_option('etherpad_bot_author_id');
+        $this->bot_name = get_option('options_bot_name','KI-Bot');
         if(!$this->bot_author_id){
-
             $slug = sanitize_title(get_bloginfo('name'));
-            $this->bot_author_id = $this->createAuthorIfNotExistsFor($slug,'KI-Bot', $this->mapper_prefix);
+            $this->bot_author_id = $this->createAuthorIfNotExistsFor($slug,$this->bot_name, $this->mapper_prefix);
             update_option('etherpad_bot_author_id', $this->bot_author_id);
             sleep(1);
         }
@@ -127,14 +138,43 @@ class GroupPad extends Etherpad_API
     public function get_group_pad_url(){
         return $this->get_pad_url($this->group_padName);
     }
+    public function get_group_id(){
+        return $this->group_id;
+    }
     public function get_group_padID(){
         return $this->group_padID;
     }
-    public function ai(){
-        return $this->chat;
+    public function ai($max_tokens=2000, $model=null, $structured=false){
+        return new $this->chat;
+//        $config = new OpenAIConfig();
+//
+//        $apiKey = get_option('options_openai_api_key');
+//        if(!$model)
+//            $model= get_option('options_openai_model','gpt-4o-mini');
+//
+//        $config->apiKey = $apiKey;
+//        $config->model = $model;
+//        $system_prompt = "Du moderierst Schulentwicklung in evangelischen Schulen, förderst pädagogische Konzepte, " .
+//            "digitale Tools und KI-Einsatz. " .
+//            "Du vermittelst praxisnah Methoden, stärkst evangelische Werte, Vielfalt und interreligiösen Dialog. " .
+//            "Du kennst deutsche Bildungsstandards und schulrechtliche Rahmenbedingungen.";
+//
+////        $config->modelOptions=[
+////            'max_tokens'=>$max_tokens,
+////            'messages' => [
+////                ["role"=>"system", "content"=>$system_prompt]
+////            ],
+////            "response_format" => $structured? ['type' => 'json_schema', 'json_schema' => ['strict' => 'true']] : ['type' => 'json_object']
+////        ];
+//        $this->chat = new OpenAIChat($config);
+//        return new $this->chat;
+
     }
     public function botID(){
         return $this->bot_author_id;
+    }
+    public function bot_name(){
+        return $this->bot_name;
     }
     /**
      * @param $padName
@@ -337,28 +377,24 @@ class GroupPad extends Etherpad_API
     }
     public function add_progress($content){
         $entry = [];
-        $entry['date'] = time();
+
+        // round to 15 minutes
+        $entry['date'] = round(time() / 900) * 900;
+
         $entry['content'] = $content;
         add_post_meta($this->group_id, 'group_progress', $entry);
     }
     public function get_progress_feedback()
     {
         $logs = get_post_meta($this->group_id, 'group_progress' );
-        $history = "\n# Progress: \n";
         if($logs){
             foreach ($logs as $log){
                 $date = date('d.m.Y H:i', $log['date']);
                 $content = $log['content'];
-                $history .= "\n\n".$date.":\n".$content;
+                $progress .= "\n\n".$date.":\n".$content;
             }
         }
-        $default_prompt = "Als Moderator des Gruppenmeetings gibst du ein knappes " .
-            "Feedback zum bisherigen Verlauf der Meetings und hebst den Fortschritt " .
-            "im letzten Eintrag hervor, sofern dies die folgende Datenlage erlaubt: \n\n {context}";
-
-        $prompt = $this->get_assistant_prompt(__FUNCTION__,['context'=>$history], $default_prompt);
-        return $this->ai()->generateText($prompt);
-
+        return $progress;
     }
 
     public function get_assistant_prompt($function,$args ,$defaut_prompt=""){
@@ -377,18 +413,28 @@ class GroupPad extends Etherpad_API
     }
 
 
+    /**
+     * @param $content
+     * @return void
+     * Adds a protocol entry to the group
+     */
     public function add_history($content){
         $entry = [];
-        $entry['date'] = time();
+        // round to 15 minutes
+        $entry['date'] = round(time() / 900) * 900;
         $entry['content'] = $content;
         add_post_meta($this->group_id, 'group_history', $entry);
     }
+    /**
+     * @return string
+     * Returns the protocol history of the group
+     */
     public function get_history(){
         $logs = get_post_meta($this->group_id, 'group_history' );
         if(!$logs){
             return false;
         }
-        $history = "\n# Rückblick: \n";
+        $history = "\n# Protokolle: \n";
         if($logs){
             foreach ($logs as $log){
                 $date = date('d.m.Y H:i', $log['date']);
@@ -398,27 +444,17 @@ class GroupPad extends Etherpad_API
         }
         return $history;
     }
-    /**
-     * @param $group_padID
-     * @return string
-     * Returns response from LLM
-     */
-    public function getAiResponse($key, $context = ''){
-        $prompts = get_field('prompts', 'options');
-        foreach ($prompts as $prompt) {
-            if($prompt['key'] == $key){
-                return $this->ai()->generateText($prompt['prompt'].$context);
-                break;
-            }
-        }
-        return false;
-    }
 
     public function add_comment($content){
+        $post_id = get_post_meta($this->group_id, '_pinwall_post', true);
+        if(!$post_id){
+            $post_id = $this->group_id;
+        }
+        $pre_content = "<strong>Bericht aus dem Meeting der Arbeitsgruppe: ".get_the_title($this->group_id)."<strong><br>";
         wp_insert_comment(array(
-            'comment_post_ID' => $this->group_id,
+            'comment_post_ID' => $post_id,
             'comment_approved' => 1,
-            'comment_content' => $content,
+            'comment_content' => $pre_content.$content,
             'comment_author' => 'KI-Bot',
             'comment_author_email' => 'bot@nomail.com'
         ));
@@ -436,7 +472,7 @@ class GroupPad extends Etherpad_API
         return array('success' => true);
 
     }
-    private function get_constitutional_Agenda($title){
+    public function get_constitutional_Agenda($title){
         $tz = 'Europe/Berlin';
         $timestamp = time();
         $dt = new DateTime("now", new DateTimeZone($tz)); //first argument "must" be a string
@@ -488,29 +524,29 @@ class GroupPad extends Etherpad_API
     public function getAgendaProgress(){
 
     }
-    public function getProgress(){
-
-        $default_prompt = "Vergleiche den aktuellen Inhalt in einem EtherPad mit der älteren gespeicherten Version und 
-        identifiziere den Fortschritt, der in der neuen Version erzielt wurde. 
-        Achte dabei besonders auf Verbesserungen in der Argumentation, geplanter Vorhaben/Aufgaben, Klarheit und Struktur. 
-        Formuliere dann eine kurze, prägnante Analyse des Fortschritts und gib konkrete Anregungen 
-        zur weiteren Verfeinerung des Inhaltes, die die Schreiber leicht übernehmen oder anpassen können:";
-        $etherpad_progress_prompt = get_option('etherpad_progress_prompt', $default_prompt);
-
-        $versions = get_current_and_last_content_version();
-
-        $etherpad_progress_prompt ."\n\n# Aktuelle Version: \n {$versions[0]}\n\n";
-        $etherpad_progress_prompt ."# Ältere Version: \n {$versions[1]}";
-
-        $this->appendChatMessage($this->group_padID,'Mein Analyse gleich unten im Etherpad ist nur als Anregung gedacht und kann gerne angepasst werden.');
-
-
-        $responseText = $this->chat->generateText($etherpad_progress_prompt);
-
-        $this->appendText($this->group_padID, $responseText);
-
-
-    }
+//    public function getProgress(){
+//
+//        $default_prompt = "Vergleiche den aktuellen Inhalt in einem EtherPad mit der älteren gespeicherten Version und
+//        identifiziere den Fortschritt, der in der neuen Version erzielt wurde.
+//        Achte dabei besonders auf Verbesserungen in der Argumentation, geplanter Vorhaben/Aufgaben, Klarheit und Struktur.
+//        Formuliere dann eine kurze, prägnante Analyse des Fortschritts und gib konkrete Anregungen
+//        zur weiteren Verfeinerung des Inhaltes, die die Schreiber leicht übernehmen oder anpassen können:";
+//        $etherpad_progress_prompt = get_option('etherpad_progress_prompt', $default_prompt);
+//
+//        $versions = get_current_and_last_content_version();
+//
+//        $etherpad_progress_prompt ."\n\n# Aktuelle Version: \n {$versions[0]}\n\n";
+//        $etherpad_progress_prompt ."# Ältere Version: \n {$versions[1]}";
+//
+//        $this->appendChatMessage($this->group_padID,'Mein Analyse gleich unten im Etherpad ist nur als Anregung gedacht und kann gerne angepasst werden.');
+//
+//
+//        $responseText = $this->chat->generateText($etherpad_progress_prompt);
+//
+//        $this->appendText($this->group_padID, $responseText);
+//
+//
+//    }
 
     public function get_prompt($prompt,$context)
     {
@@ -594,7 +630,7 @@ class GroupPad extends Etherpad_API
         return $results;
     }
 
-    public function appendHTML($html, $search_term, $append_html="") {
+    public function DOM_appendHTML($html, $search_term, $append_html="") {
         $dom = new DOMDocument();
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         $xpath = new DOMXPath($dom);
@@ -632,7 +668,7 @@ class GroupPad extends Etherpad_API
         return $dom->saveHTML();
     }
 
-    public function replaceHTML($html, $search_term, $replace_html) {
+    public function DOM_replaceHTML($html, $search_term, $replace_html) {
         $dom = new DOMDocument();
         @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         $xpath = new DOMXPath($dom);
@@ -680,7 +716,13 @@ class GroupPad extends Etherpad_API
         if(!$padID){
             $padID = $this->group_padID;
         }
+        $html = get_transient('pad_'.$padID);
+        if(!$html){
+            $html = $this->getHTML($padID);
+            set_transient('pad_'.$padID, $html, 20);
+        }
         $html = $this->getHTML($padID);
+
         //$results = $this->searchHeadersByTerm($html, $term);
         $results = $this->extractHTML($html, $term);
 
@@ -700,8 +742,12 @@ class GroupPad extends Etherpad_API
             $padID = $this->group_padID;
         }
 
-        $html = $this->getHTML($padID);
-        $newHtml = $this->appendHTML($html, $term, $newContent);
+        $html = get_transient('pad_'.$padID);
+        if(!$html){
+            $html = $this->getHTML($padID);
+            set_transient('pad_'.$padID, $html, 20);
+        }
+        $newHtml = $this->DOM_appendHTML($html, $term, $newContent);
         //$this->setHTML($padID, $newHtml);
         return $newHtml;
 
@@ -711,11 +757,24 @@ class GroupPad extends Etherpad_API
             $padID = $this->group_padID;
         }
 
-        $html = $this->getHTML($padID);
-        $newHtml = $this->replaceHTML($html, $term, $newContent);
+        $html = get_transient('pad_'.$padID);
+        if(!$html){
+            $html = $this->getHTML($padID);
+            set_transient('pad_'.$padID, $html, 20);
+        }
+        $newHtml = $this->DOM_replaceHTML($html, $term, $newContent);
         //$this->setHTML($padID, $newHtml);
         return $newHtml;
 
     }
+    public function html_to_markdown($html) {
+        $converter = new HtmlConverter();
+        return $converter->convert($html);
+    }
+    public function markdown_to_html($markdown) {
+        $converter = new Parsedown();
+        return $converter->text($markdown);
+    }
+
 
 }

@@ -1,10 +1,20 @@
 <?php
+use League\HTMLToMarkdown\HtmlConverter;
 require_once 'GroupPad.php';
 
 class GroupSpace_Ajax {
+
     public function __construct() {
         add_action('wp_ajax_group_space_action', array($this, 'handle_ajax_request'));
         add_action('wp_ajax_nopriv_group_space_action', array($this, 'handle_ajax_request'));
+    }
+    public function html_to_markdown($html) {
+        $converter = new HtmlConverter();
+        return $converter->convert($html);
+    }
+    public function markdown_to_html($markdown) {
+        $converter = new Parsedown();
+        return $converter->text($markdown);
     }
 
     public function handle_ajax_request() {
@@ -87,23 +97,48 @@ class GroupSpace_Ajax {
             if ($prompt['active']) {
                 if ($prompt['key'] == $action) {
                     $response = $this->handle_ai_action($prompt, $groupPad, $post_id,$modal_title);
+                    return $response;
                 }
             }
         }
+        switch ($action) {
+            case 'do_share':
+                $share = $groupPad->search_pad('Teilen');
+                if($share) {
+                    $groupPad->add_comment($share['content']);
+                    $response['success'] = true;
+                    $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'];
+                }
+                break;
+            case 'do_add_log':
+                $protokoll =  $groupPad->search_pad('Protokoll');
+                if($protokoll) {
+                    $protokoll = $protokoll['content'];
+                    $groupPad->add_history($protokoll);
+                    $response['success'] = true;
+                    $response['message'] =  'Protokoll wurde unter Protokollen gespeichert';
+                }
+                break;
+            default:
+                $response = array('success' => false, 'message' => 'Aktion wird nicht unterstützt');
+        }
+
         return $response;
 
     }
-    private function handle_ai_action($prompt_arr, $groupPad, $group_id, $modal_title=null) {
+    private function handle_ai_action($prompt_arr, \GroupPad $groupPad, $group_id, $modal_title=null) {
 
         $label = (string) $prompt_arr['label'];
         $message= (string) $prompt_arr['message'];
         $use_context = $prompt_arr['context'];
-        $output = (string) $prompt_arr['output'];
+        $outputs[] = $prompt_arr['output'];
         $description = (string) $prompt_arr['description'];
         $prompt = (string) $prompt_arr['prompt'];
         $action = (string) $prompt_arr['key'];
 
-        if($modal_title){
+
+
+        if($description && $modal_title){
             // Wenn ein Modal-Titel übergeben wurde, wird ein Modal geöffnet, der Titel wird als Überschrift verwendet,
             // eine Beschreibung der Aktion angezeigt und ein OK-Button, um diese Aktion tatsächlich auszuführen,
             // oder ein Abbrechen-Button um die Aktion nicht auszuführen.
@@ -130,30 +165,16 @@ class GroupSpace_Ajax {
 
         $padID = $groupPad->get_group_padID();
         $messages = $groupPad->getChatHistory($padID);
-        $etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
-        $chat = "\n\n#Chatchachrichten:\n".$messages;
+
+        //$etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
+        $chat = "\n\n# Chatchachrichten:\n".$messages;
 
         $is_onetime= $prompt_arr['singleplay'];
         if(get_post_meta($group_id, 'ai_'.$prompt_arr['key'], true) && $is_onetime){
             return array('success' => false, 'message' => 'Diese Aktion kann nur einmal ausgeführt werden');
         }
-
         $pads =[];
-        $append_output = false;
-        $replace_output = false;
-        $do_share_pinwall_comment = false;
         switch ($action){
-            case 'log':
-                $pad = $groupPad->search_pad('Protokoll');
-                if(!$pad['content']){
-                    $pad = "";
-                    $empty_agenda = get_field('etherpad_agenda_template', 'options');
-                    $pre_prompt = "Für das Meeting wurde deiner Gruppe folgendes Agendaformular zur Verfügung gestellt: \n\n```";
-                    $pre_prompt .= $empty_agenda .'```';
-                    $pre_prompt .= "\n\Dieses Formular wurde ausgefüllt: \n\n";
-                    $prompt = $pre_prompt.$prompt;
-                }
-                break;
             case 'tops-check':
                 $pads[] = $groupPad->search_pad('Tagesordnungspunkte');
                 break;
@@ -161,29 +182,36 @@ class GroupSpace_Ajax {
                 $pads[] = $groupPad->search_pad('Agenda');
                 $feedback = $groupPad->search_pad('Feedback');;
                 if($feedback){
+                    $feedback['title'] = 'Dieses Feedback hattest du bereits gegeben. Überarbeite es auf der Basis der aktuellen Meeting-Agenda';
+                    $pads[] = $feedback;
                     $replace_output = 'Feedback';
+                    $message = 'Ich habe das bisherige Feedback im Etherpad überarbeitet';
                 }
-
                 break;
             case 'progress':
-                $pads[] = $groupPad->search_pad('Agenda');
-                $progress = $groupPad->search_pad('Fortschritt');
-                if ($progress) {
-                    $append_output = 'Fortschritt';
-                    $prompt .= "\n\n Du hast bereits den Fortschritt analysiert, ergänze nur wenn etwas fehlt. Hier deine Vorhergehende Analyse: \n\n".$progress['content'];
-                }
-
+                $outputs[] = 'progress';
+                $outputs[] = 'message';
+//            case 'do_add_log':
+//                $protokoll =  $groupPad->search_pad('Protokoll');
+//                $protokoll = $protokoll['content'];
+//                if($protokoll) {
+//                    $groupPad->add_history($protokoll);
+//                    $response['success'] = true;
+//                    $response['message'] =  'Protokoll wurde gespeichert';
+//                    return $response;
+//                }
                 break;
-            case 'share':
-                $share = $groupPad->search_pad('Teilen');
-                if($share){
+            case 'log':
+                $protokoll =  $groupPad->search_pad('Protokoll');
+                if($protokoll && !empty(trim($protokoll['content']))) {
+                    $protokoll = $protokoll['content'];
                     $response = array(
                         'success' => true,
-                        'message' => '<strong>Eure Mitteilung an die Community</strong>: <br>'.$share['content'].'<hr>Ich mache jetzt daraus einen Kommentar auf der Pinnwand.',
+                        'message' => '<strong>Kann ich das Protokoll Speichern?</strong>: <hr>'.$protokoll,
                         'buttons' => array(
                             array(
                                 'label' => 'OK',
-                                'action' => $action,
+                                'action' => 'do_add_log',
                                 'postId' => $group_id
                             ),
                             array(
@@ -193,14 +221,79 @@ class GroupSpace_Ajax {
                             )
                         )
                     );
+                    return $response;
+                }
+                $agenda_arr = $groupPad->search_pad('Agenda');
+                $agenda_arr['content'] = ""; //keine personenbezogenen Daten
+                $pads[] = $agenda_arr;
+                $pads[] = $groupPad->search_pad('Ziel');
+                $pads[] = $groupPad->search_pad('Tagesordnung');
+                $pads[] = $groupPad->search_pad('Verabredungen');
+                $pads[] = $groupPad->search_pad('Anmerkungen');
+                $pads[] = $groupPad->search_pad('Reflekion');
+                $pads[] = $groupPad->search_pad('Ergebnisse');
+                $pads[] = $groupPad->search_pad('Termin');
+                $pads[] = $groupPad->search_pad('Verschiedenes');
 
+
+                break;
+            case 'chat':
+
+                $agenda_arr = $groupPad->search_pad('Agenda');
+                $agenda_arr['content'] = ""; //keine personenbezogenen Daten
+                $pads[] = $agenda_arr;
+                $pads[] = $groupPad->search_pad('Ziel');
+                $pads[] = $groupPad->search_pad('Tagesordnung');
+                $pads[] = $groupPad->search_pad('Verabredungen');
+                $pads[] = $groupPad->search_pad('Anmerkungen');
+                $pads[] = $groupPad->search_pad('Reflekion');
+                $pads[] = $groupPad->search_pad('Ergebnisse');
+
+                break;
+//            case 'do_share':
+//                    $share = $groupPad->search_pad('Teilen');
+//                    if($share) {
+//                        $groupPad->add_comment($share['content']);
+//                        $response['success'] = true;
+//                        $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'];
+//                        return $response;
+//                    }
+//                break;
+            case 'share':
+                $share = $groupPad->search_pad('Teilen');
+                if($share && !empty(trim($share['content']))) {
+                    $response = array(
+                        'success' => true,
+                        'message' => '<strong>Eure Mitteilung an die Community</strong>: <br>'.$share['content'].'<hr>Ich mache jetzt daraus einen Kommentar auf der Pinnwand.',
+                        'buttons' => array(
+                            array(
+                                'label' => 'OK',
+                                'action' => 'do_share',
+                                'postId' => $group_id
+                            ),
+                            array(
+                                'label' => 'Abbrechen',
+                                'action' => 'close'
+
+                            )
+                        )
+                    );
+                    return $response;
                 }else{
-                    $pads[] = $groupPad->search_pad('Agenda');
+                    $agenda_arr = $groupPad->search_pad('Agenda');
+                    $agenda_arr['content'] = ""; //keine personenbezogenen Daten
+                    $pads[] = $agenda_arr;
+                    $pads[] = $groupPad->search_pad('Ziel');
+                    $pads[] = $groupPad->search_pad('Tagesordnung');
+                    $pads[] = $groupPad->search_pad('Notizen');
+                    $pads[] = $groupPad->search_pad('Ergebnisse');
+                    $pads[] = $groupPad->search_pad('Protokoll');
                 }
 
                 break;
             default:
-                $pads[] = ['content' => ''];
+
+
         }
         $pad_context = '';
         foreach ($pads as $pad) {
@@ -209,27 +302,37 @@ class GroupSpace_Ajax {
             }
         }
 
-        $response['success'] = true;
-        $response['message'] =  'Die Aktion '.$label.' wird derzeit überarbeitet und ist in Kürze wieder verfügbar. <h4>Kontext:</h4>'.$pad_context;
-        return $response;
-
 
         foreach ($use_context as $context) {
+            $prompt .= "\n\n";
+
             switch ($context){
-                case 'challenge':
-                    $prompt .= $groupPad->get_challenge();
-                    break;
                 case 'goal':
-                    $prompt .= $groupPad->get_goal();
+                    $prompt .= "# Gesamtziel der Gruppe:\n\n".$groupPad->get_goal();
+                    $prompt .= "\n\n";
                     break;
-                case 'history':
-                    $prompt .= $groupPad->get_history();;
+                case 'challenge':
+                    $prompt .= "# Herausforderungen und Aufgaben:\n\n".$groupPad->get_challenge();
+                    $prompt .= "\n\n";
                     break;
-                case 'pad':
-                    $prompt .= $pad_context;
+               case 'history':
+                    $prompt .= "# Verlauf\n\n".$groupPad->get_history();
+                    $prompt .= "\n\n";
+                    break;
+                case 'progress':
+                    $prompt .= "\n\n---\n\n# Bereits ausgefülltes Meeting Agenda Formular:\n";
+                    $prompt .= $this->html_to_markdown($pad_context);
+                    $prompt .= "\n\n---\n\n# Zum Vergleich Leeres Agenda Formular:\n\n";
+                    $prompt .= $this->html_to_markdown(html_entity_decode(get_field('etherpad_agenda_template', 'options')));
+                    $prompt .= "\n\n\n\n---\n\n# Deine bisherige Fortschrittsanalysen\n\n".$groupPad->get_progress_feedback();
+                    $prompt .= "\n\n---\n\n";
                     break;
                 case 'chat':
                     $prompt .= $chat;
+                    $prompt .= "\n\n---\n\n";
+                    break;
+                case 'pad':
+                    $prompt .= "# Kontext Etherpad:\n\n".$this->html_to_markdown($pad_context);
                     break;
 
                 default:
@@ -239,52 +342,70 @@ class GroupSpace_Ajax {
 
         $response = array('success' => false);
 
+        if(get_option('options_debug_ai_prompts') ) {
+            $response['success'] = true;
+            $message = '<h3>Prompt:</h3>'. "\n\nDeine Aufgabe:\n" . $this->markdown_to_html($prompt);
+        }
 
         if(!empty($prompt)){
-            $answer = $groupPad->ai()->generateText($prompt);
+            $prompt ="\n\nDeine Aufgabe:\n".$prompt;
+            try {
+                $answer = $groupPad->ai()->generateText($prompt);
+            } catch (Exception $e) {
+                $response['success'] = true;
+                $response['message'] = 'Fehler bei der Kommunikation mit der KI: '.$e->getMessage();
+                return $response;
+            }
+
+
+            if(get_option('options_debug_ai_answers')) {
+                $response['success'] = true;
+                $response['message'] = $message .= '<h3>Antwort:</h3>'.$this->markdown_to_html($answer);
+                return $response;
+            }
 
             //Protokoll speichern
-            if($prompt_arr['key'] == 'log'){
-                $groupPad->add_history($answer);
+//            if($prompt_arr['key'] == 'log'){
+//                $groupPad->add_history($answer);
+//            }
+
+            foreach ($outputs as $k=>$output) {
+
+                switch ($output) {
+                    case 'chat':
+                        $groupPad->appendChatMessage($padID, $answer, $groupPad->botID());
+                        $response['success'] = true;
+                        break;
+                    case 'pad':
+                        $parsedown = new Parsedown();
+                        $answer = $parsedown->text($answer);
+                        $groupPad->appendHTML($padID, "<hr><h1>$label (AI)<h1>\n\n" . $answer);
+                        $response['success'] = true;
+                        break;
+                    case 'history':
+                        $groupPad->add_history($answer);
+                        $response['success'] = true;
+                        break;
+                    case 'progress':
+                        $groupPad->add_progress($answer);
+                        $response['success'] = true;
+                        break;
+                    case 'comment':
+                        $groupPad->add_comment($answer);
+                        $response['success'] = true;
+                        break;
+                    case 'message':
+                        $message = $answer;
+                        //markdown answer to html
+                        $parsedown = new Parsedown();
+                        $message = $parsedown->text($message);
+                        $response['success'] = true;
+                        break;
+                    default:
+                        $context = '';
+
+                }
             }
-
-            switch ($output){
-                case 'chat':
-                    $groupPad->appendChatMessage($padID, $answer, $groupPad->botID());
-                    $response['success'] = true;
-                    break;
-                case 'pad':
-                    $parsedown = new Parsedown();
-                    $answer = $parsedown->text($answer);
-                    $groupPad->appendHTML($padID, "<hr><h1>$label (AI)<h1>\n\n".$answer);
-                    $response['success'] = true;
-                    break;
-                case 'history':
-                    $groupPad->add_history($answer);
-                    $response['success'] = true;
-                    break;
-                case 'progress':
-                    $groupPad->add_progress($answer);
-                    $message = $groupPad->get_progress_feedback();
-                    $groupPad->appendChatMessage($padID, $message, $groupPad->botID());
-                    $response['success'] = true;
-                    break;
-                case 'comment':
-                    $groupPad->add_comment($answer);
-                    $response['success'] = true;
-                    break;
-                case 'message':
-                    $message=$answer;
-                    //markdown answer to html
-                    $parsedown = new Parsedown();
-                    $message = $parsedown->text($message);
-                    $response['success'] = true;
-                    break;
-                default:
-                    $context = '';
-
-            }
-
 
         }
 
@@ -312,17 +433,24 @@ class GroupSpace_Ajax {
 
 
         $post_id = $_POST['post_id'];
-        $group = get_post($post_id);
-        $current_user = wp_get_current_user();
         $groupPad = new GroupPad($post_id);
 
         $initialmeeting = get_post_meta($post_id, 'group_initial_meeting', true);
         if(!$initialmeeting){
             $groupPad->set_constitutional_Agenda();
-            return array('success' => true);
+        }else{
+            $agenda = $this->get_empty_agenda($groupPad);
+            $padID = $groupPad->get_group_padID();
+            $groupPad->setHTML($padID, $agenda,0,$groupPad->botID());
         }
+        return array('success' => true);
 
+    }
 
+    public function get_empty_agenda($groupPad)
+    {
+
+        $post_id = $groupPad->get_group_id();
         $tz = 'Europe/Berlin';
         $timestamp = time();
         $dt = new DateTime("now", new DateTimeZone($tz)); //first argument "must" be a string
@@ -330,19 +458,21 @@ class GroupSpace_Ajax {
         $today =  $dt->format('d.m.Y');
         $now =  $dt->format('d.m.Y, H:i');
 
-        $padID = $groupPad->get_group_padID();
+        $current_user = wp_get_current_user();
+        $group = get_post($post_id);
+
+
         $agenda = get_field('etherpad_agenda_template', 'options');
         $agenda = str_replace('{TODAY}', $today, $agenda);
         $agenda = str_replace('{STARTTIME}', $now, $agenda);
         $agenda = str_replace('{GROUPNAME}',$group->post_title , $agenda);
         $agenda = str_replace('{USER}',$current_user->display_name, $agenda);
 
-        $groupPad->setHTML($padID, $agenda,0,$groupPad->botID());
-
-        return array('success' => true);
-
+        return $agenda;
     }
-
+    /**
+     * only example
+     */
     private function handle_chat_answer() {
         $post_id = $_POST['post_id'];
         $groupPad = new GroupPad($post_id);
@@ -356,14 +486,18 @@ class GroupSpace_Ajax {
         $groupPad->appendChatMessage($padID, $chatmessage, $groupPad->botID());
         return array('success' => true);
     }
+
+    /**
+     * only example
+     */
     private function handle_action1() {
         $post_id = $_POST['post_id'];
         $groupPad = new GroupPad($post_id);
         $padID = $groupPad->get_group_padID();
         $messages = $groupPad->getChatHistory($padID);
 
-        $context = "\n#Chatchachrichten:\n".implode("\n", $messages);
-        $context .= "\n\n#Etherpadinhalt:\n".$groupPad->getText($padID);
+        $context = "\n# Chatchachrichten:\n".implode("\n", $messages);
+        $context .= "\n\n# Etherpadinhalt:\n".$groupPad->getText($padID);
 
         $prompt ="Lies die Chatnachrichten und den Inhalt des Etherpads und schreibe einen 
         kurzen Impuls (150 Zeichen) zur Weiterarbeit in unserer Gruppe als Chatnachricht $context";
@@ -375,7 +509,9 @@ class GroupSpace_Ajax {
         // Implementieren Sie hier die Logik für Aktion 1
         return array('success' => true, 'message' => 'Ich habe im CHat geantwortet');
     }
-
+    /**
+     * only example
+     */
     private function handle_action2() {
         $post_id = $_POST['post_id'];
         $groupPad = new GroupPad($post_id);

@@ -52,7 +52,8 @@
             if (response.success) {
                 if(response.message){
                     this.$modalContent.html('<p>' + response.message + '</p>');
-                    this.setModalButtons(response.buttons);
+                    $('.progress-bar').hide();
+                    this.setModalButtons(response.buttons,true);
                     this.load_modal_content_scripts();
                     this.$modal.css('display', 'flex');
                 }
@@ -61,8 +62,14 @@
             }
         },
 
-        setModalButtons: function(buttons) {
+        setModalButtons: function(buttons,progressBar=false) {
             this.$modalFooter.empty();
+            this.$modalFooter.empty();
+            if(progressBar){
+                var $progressBar = $('<div>', { class: 'progress-bar' });
+                this.$modalFooter.append($progressBar);
+            }
+
             if (buttons && buttons.length) {
                 buttons.forEach(function(button) {
                     var $btn = $('<button>', {
@@ -83,6 +90,8 @@
 
         load_modal_content_scripts: function() {
             var thiz = this;
+            //this.$modalFooter.append('<div class="progress-bar"></div>'); // Add progress bar initially
+            var thiz = this;
 
             $('.close.button').on('click', (e)=>{
                 thiz.closeModal()
@@ -90,6 +99,7 @@
 
             $('.modal-footer button').on('click', function(e) {
                 e.preventDefault();
+                $('.progress-bar').show();
                 thiz.handleAction(e);
             });
 

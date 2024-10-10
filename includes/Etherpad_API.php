@@ -3,6 +3,7 @@
  * Etherpad API Library for WordPress
  * author: Joachim Happel
  * @see https://etherpad.org/doc/v2.2.2/#_http_api
+ * https://docs.etherpad.org/api/index.html
  */
 
 
@@ -57,15 +58,25 @@ class Etherpad_API {
             return false;
         }else{
             if(!empty($return) && isset($data['data'][$return])){
-                if($endpoint === 'getChatHistory'){
+
+                if($endpoint == 'getChatHistory'){
+                    date_default_timezone_set('Europe/Berlin');
                     $messages = array();
                     foreach($data['data'][$return] as $key => $message){
-                        $messages = array(
-                            'time' => $message['time'],
-                            'userName' => $message['userName'],
-                            'text' => $message['text']
-                        );
-                        $messages[] = sprintf('[%s] %s: %s',$message['time'], $message['userName'], $message['text']);
+
+                        $messageDate = (new DateTime())->setTimestamp((int)($message['time']/1000))->format('Y-m-d');
+                        $messageDateTime = (new DateTime())->setTimestamp((int)($message['time']/1000))->format('Y-m-d H:i:s');
+                        $today = (new DateTime('now'))->format('Y-m-d');
+                        $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
+
+                        if ($messageDate === $today || $messageDate === $yesterday) {
+                            $save_message = array(
+                                'time' => $messageDateTime,
+                                'userName' => $message['userName'],
+                                'text' => $message['text']
+                            );
+                            $messages[] = sprintf('[%s] %s: %s',$save_message['time'], $save_message['userName'], $save_message['text']);
+                        }
                     }
                     return implode("\n",$messages);
                 }
