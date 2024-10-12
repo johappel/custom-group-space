@@ -1,12 +1,10 @@
 <?php
-require_once 'Etherpad_API.php';
+require_once 'Extended_Etherpad_API.php';
 require_once 'OpenAIClient.php';
 require_once plugin_dir_path(__DIR__) . '/vendor/autoload.php'; // Ensure autoload is included
-//use LLPhant\OpenAIConfig;
-//use LLPhant\Chat\OpenAIChat;
 use League\HTMLToMarkdown\HtmlConverter;
 
-class GroupPad extends Etherpad_API
+class GroupPad extends Extended_Etherpad_API
 {
     protected $base_url;
     protected $api_key;
@@ -200,59 +198,33 @@ class GroupPad extends Etherpad_API
         }
         return false;
     }
+
     public function set_initial_meeting()
     {
-        $html = $this->getHTML($this->group_padID);
+        $data = [
+            'name' => $this->search_pad('Name')['content'],
+            'goal' => $this->search_pad('Ziel')['content'],
+            'challenge' => $this->search_pad('Herausforderungen')['content']
+        ];
 
-        $config = new OpenAIConfig();
-        $config->apiKey = get_option('options_openai_api_key');
-        $config->model = get_option('options_openai_model','gpt-4o-mini');
-        $config->response_format = '{ "type": "json_schema", "json_schema": {...} }';
-        $config->temperature = 0.2;
-        //$config->response_format = '{ "type": "json_object", "json_schema": {...} }';
-        $chat = new OpenAIChat($config);
-
-        // Konvertiere HTML in Markdown
-        $converter = new League\HTMLToMarkdown\HtmlConverter();
-        $markdown = $converter->convert($html);
-
-
-        $default_prompt = "Extrahiere aus dem Inhalt Namen, Ziel, Herausforderungen und Aufgaben der Gruppe und gib sie als JSON-Objekt zurück in dieser Form zurück: ".
-            "{ \"name\": \"(Name der Gruppe)\", \"goal\": \"(Ziel der Gruppe)\", \"challenge\": \"(Herausforderungen und Aufgaben)\" } \n\n # Kontext: {context}\n";
-
-        $prompt = $this->get_assistant_prompt('initial_meeting_extraction',['context'=>$markdown],$default_prompt);
-
-
-        $json = $chat->generateText($prompt);
-        if(is_string($json)){
-            $json = str_replace('```json', '', $json);
-            $json = str_replace('```', '', $json);
-            $data = json_decode($json, true);
-        }else{
-            $data = $json;
-        }
-
-        if($data){
-
+        if ($data) {
             update_post_meta($this->group_id, 'group_initial_meeting', time());
             update_post_meta($this->group_id, 'group_title', $data['name']);
             update_post_meta($this->group_id, 'group_goal', $data['goal']);
             update_post_meta($this->group_id, 'group_content', $data['challenge']);
             update_post_meta($this->group_id, 'group_challenge', $data['challenge']);
 
-
             $group_post = get_post($this->group_id);
-
-            $post_array = array();
-            $post_array['ID'] = $group_post->ID;
-            $post_array['post_content'] = $data['challenge'];
-            $post_array['post_excerpt'] = $data['goal'];
-            $post_array['post_title'] = $data['name'];
-            $post_array['post_status'] = 'publish';
-            $post_array['post_type'] = 'group_post';
+            $post_array = [
+                'ID' => $group_post->ID,
+                'post_content' => $data['challenge'],
+                'post_excerpt' => $data['goal'],
+                'post_title' => $data['name'],
+                'post_status' => 'publish',
+                'post_type' => 'group_post'
+            ];
 
             wp_update_post($post_array);
-
             return $data;
         }
         error_log('No Data');
@@ -424,6 +396,7 @@ class GroupPad extends Etherpad_API
         $entry['date'] = round(time() / 900) * 900;
         $entry['content'] = $content;
         add_post_meta($this->group_id, 'group_history', $entry);
+        do_action('group_builder_add_history', $this->group_id, date('d.m.Y H:i', $entry['date']), $content);
     }
     /**
      * @return string
@@ -445,19 +418,21 @@ class GroupPad extends Etherpad_API
         return $history;
     }
 
-    public function add_comment($content){
+    public function add_comment($content, $internal=false){
         $post_id = get_post_meta($this->group_id, '_pinwall_post', true);
-        if(!$post_id){
+        if(!$post_id || $internal){
             $post_id = $this->group_id;
         }
         $pre_content = "<strong>Bericht aus dem Meeting der Arbeitsgruppe: ".get_the_title($this->group_id)."</strong><br>";
-        wp_insert_comment(array(
+        $comment_id = wp_insert_comment(array(
             'comment_post_ID' => $post_id,
             'comment_approved' => 1,
             'comment_content' => $pre_content.$content,
             'comment_author' => 'KI-Bot',
             'comment_author_email' => 'bot@nomail.com'
         ));
+        do_action('group_builder_comment_post', $post_id, $comment_id);
+        return get_comment_link($comment_id);
     }
 
     public function set_constitutional_Agenda() {
@@ -467,7 +442,8 @@ class GroupPad extends Etherpad_API
         $groupPad = new GroupPad($post_id);
 
         $agenda = $this->get_constitutional_Agenda($group->post_title);
-        $groupPad->setHTML($groupPad->group_padID, $agenda);
+        $agenda_html = $this->markdown_to_html($agenda);
+        $groupPad->setHTML($groupPad->group_padID, $agenda_html);
 
         return array('success' => true);
 

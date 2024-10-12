@@ -85,7 +85,13 @@ class GroupSpace_Ajax {
     {
         $response = array('success' => false, 'message' => 'Aktion nicht gefunden');
 
+        $today = date('Y-m-d');
         $post_id = (int) $_POST['post_id'];
+
+        if($today === get_post_meta($post_id, '_group_space_action_'.$action, true)){
+            return array('success' => false, 'message' => 'Diese Aktion kann nur einmal am Tag ausgeführt werden');
+        }
+
         $modal_title = isset($_POST['modal_title']) ? sanitize_title($_POST['modal_title']) : '';
         if(!$post_id){
             return array('success' => false, 'message' => 'Gruppe nicht gefunden');
@@ -105,10 +111,11 @@ class GroupSpace_Ajax {
             case 'do_share':
                 $share = $groupPad->search_pad('Teilen');
                 if($share) {
-                    $groupPad->add_comment($this->$share['content']);
+                    $link = $groupPad->add_comment($this->$share['content']);
                     $response['success'] = true;
-                    $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'];
+                    $response['message'] =  'Folgender Kommentar wurde auf der Pinnwand veröffentlicht: <br>'.$share['content'].'<br>'.$link;
                 }
+                update_post_meta($post_id, '_group_space_action_'.$action, $today);
                 break;
             case 'do_add_log':
                 $protokoll =  $groupPad->search_pad('Protokoll');
@@ -118,6 +125,7 @@ class GroupSpace_Ajax {
                     $response['success'] = true;
                     $response['message'] =  'Protokoll wurde unter Protokollen gespeichert';
                 }
+                update_post_meta($post_id, '_group_space_action_'.$action, $today);
                 break;
             default:
                 $response = array('success' => false, 'message' => 'Aktion wird nicht unterstützt');
@@ -135,7 +143,6 @@ class GroupSpace_Ajax {
         $description = (string) $prompt_arr['description'];
         $prompt = (string) $prompt_arr['prompt'];
         $action = (string) $prompt_arr['key'];
-
 
 
         if($description && $modal_title){
@@ -164,16 +171,31 @@ class GroupSpace_Ajax {
 
 
         $padID = $groupPad->get_group_padID();
-        $messages = $groupPad->getChatHistory($padID);
-
-        //$etherpad = "\n\n#Etherpadinhalt:\n".$groupPad->getHtml($padID);
-        $chat = "\n\n# Chatchachrichten:\n".$messages;
 
         $is_onetime= $prompt_arr['singleplay'];
         if(get_post_meta($group_id, 'ai_'.$prompt_arr['key'], true) && $is_onetime){
             return array('success' => false, 'message' => 'Diese Aktion kann nur einmal ausgeführt werden');
         }
         $pads =[];
+        if ($action !== 'chat'){
+           // user sollen $actions maximal alle 5 Minuten ausführen können
+            $wait_time = get_option('options_ai_wait_time', 5);
+            $delay = $wait_time;
+            if($action === 'tops-check'){
+                // tops-check kann nur alle 60 Sekunden ausgeführt werden
+                $wait_time = 1;
+
+            }
+            $delay = $wait_time * 60;
+
+            $wait_time_message = ($wait_time>1)? $wait_time.' Minuten': $wait_time.' Minute';
+
+            if(!empty(get_post_meta($group_id, '_ai_action_last_use_'.$action, true)) && (time() - get_post_meta($group_id, '_ai_action_last_use_'.$action, true)) < $delay){
+                return array('success' => true, 'message' => 'Ich wurde gerade eben gleiche gerade gefragt. Wurde es in der Gruppe schon wahrgenommen und bearbeitet? Versuche es gerne in '.$wait_time_message.' erneut.');
+            }
+            update_post_meta($group_id, '_ai_action_last_use_'.$action, time());
+        }
+
         switch ($action){
             case 'tops-check':
                 $pads[] = $groupPad->search_pad('Tagesordnungspunkte');
@@ -235,10 +257,9 @@ class GroupSpace_Ajax {
                 $pads[] = $agenda_arr;
                 $pads[] = $groupPad->search_pad('Ziel');
                 $pads[] = $groupPad->search_pad('Tagesordnung');
+                $pads[] = $groupPad->search_pad('Notizen');
                 $pads[] = $groupPad->search_pad('Verabredungen');
-                $pads[] = $groupPad->search_pad('Anmerkungen');
-                $pads[] = $groupPad->search_pad('Reflekion');
-                $pads[] = $groupPad->search_pad('Ergebnisse');
+
 
                 break;
             case 'share':
@@ -284,7 +305,6 @@ class GroupSpace_Ajax {
             }
         }
 
-
         foreach ($use_context as $context) {
             $prompt .= "\n\n";
 
@@ -310,7 +330,50 @@ class GroupSpace_Ajax {
                     $prompt .= "\n\n---\n\n";
                     break;
                 case 'chat':
-                    $prompt .= $chat;
+                    $chat_messages = $groupPad->getChatMessages($padID,2);
+                    $prompt = "\n\n# Chatchachrichten:\n";
+                    $new_messages = '';
+                    $do_not_reply = false;
+                    if($chat_messages){
+                        $bot_name = get_option('options_bot_name', 'KI-Bot');
+                        date_default_timezone_set('Europe/Berlin');
+                        $messages = array();
+                        foreach($chat_messages as $key => $msg){
+
+                            $messageDate = (new DateTime())->setTimestamp((int)($msg['time']/1000))->format('Ymd');
+                            $messageDateTime = (new DateTime())->setTimestamp((int)($msg['time']/1000))->format('Y-m-d H:i:s');
+                            $today = (new DateTime())->format('Ymd');
+                            $yesterday = (new DateTime('yesterday'))->format('Ymd');
+
+                            //if ($messageDate === $today || $messageDate === $yesterday) {
+                            if ($messageDate === $today ) {
+                                $do_not_reply = false;
+                                if($bot_name === $msg['userName']){
+                                    $do_not_reply = true;
+                                    continue;
+                                }
+                                $save_message = array(
+                                    'time' => $messageDateTime,
+                                    'userName' => $msg['userName'],
+                                    'text' => $msg['text']
+                                );
+                                $messages[] = sprintf('[%s] %s: %s',$save_message['time'], $save_message['userName'], $save_message['text']);
+                            }
+                        }
+                        $new_messages = implode("\n",$messages);
+                    }
+                    if(empty($new_messages) && $action === 'chat'){
+                        $response['success'] = true;
+                        $response['message'] = 'Es gibt keine (neuen) Chatnachrichten, auf die ich mich beziehen kann.';
+                        return $response;
+                    }else{
+                        if($do_not_reply){
+                            $response['success'] = true;
+                            $response['message'] = 'Ich habe bereits auf die letzte Chatnachricht geantwortet';
+                            return $response;
+                        }
+                        $prompt .= $new_messages;
+                    }
                     $prompt .= "\n\n---\n\n";
                     break;
                 case 'pad':
@@ -368,10 +431,13 @@ class GroupSpace_Ajax {
                         $response['success'] = true;
                         break;
                     case 'comment':
-                        $groupPad->add_comment($answer);
+                        $link = $groupPad->add_comment($answer);
+                        $message = 'Ich habe einen Kommentar veröffentlicht: <br>'.$link;
                         $response['success'] = true;
                         break;
                     case 'message':
+
+
                         $message = $answer;
                         //markdown answer to html
                         $parsedown = new Parsedown();
@@ -416,11 +482,12 @@ class GroupSpace_Ajax {
         if(!$initialmeeting){
             $groupPad->set_constitutional_Agenda();
         }else{
-            $agenda = $this->get_empty_agenda($groupPad);
+            $agenda_html = $this->get_empty_agenda($groupPad);
             $padID = $groupPad->get_group_padID();
-            $groupPad->setHTML($padID, $agenda,0,$groupPad->botID());
+
+            $groupPad->setHTML($padID, $agenda_html,0,$groupPad->botID());
         }
-        return array('success' => true);
+        return array('success' => true, 'message' => 'Agenda wurde erneuert');
 
     }
 
@@ -444,8 +511,8 @@ class GroupSpace_Ajax {
         $agenda = str_replace('{STARTTIME}', $now, $agenda);
         $agenda = str_replace('{GROUPNAME}',$group->post_title , $agenda);
         $agenda = str_replace('{USER}',$current_user->display_name, $agenda);
-
-        return $agenda;
+        $parser = new Parsedown();
+        return $parser->text($agenda);
     }
     /**
      * only example
