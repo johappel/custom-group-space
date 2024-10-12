@@ -367,7 +367,7 @@ class GroupSpace_Ajax {
                         $response['message'] = 'Es gibt keine (neuen) Chatnachrichten, auf die ich mich beziehen kann.';
                         return $response;
                     }else{
-                        if($do_not_reply){
+                        if($do_not_reply && $action === 'chat'){
                             $response['success'] = true;
                             $response['message'] = 'Ich habe bereits auf die letzte Chatnachricht geantwortet';
                             return $response;
