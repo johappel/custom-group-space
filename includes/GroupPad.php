@@ -1,10 +1,10 @@
 <?php
-require_once 'Extended_Etherpad_API.php';
+require_once 'Etherpad_API.php';
 require_once 'OpenAIClient.php';
 require_once plugin_dir_path(__DIR__) . '/vendor/autoload.php'; // Ensure autoload is included
 use League\HTMLToMarkdown\HtmlConverter;
 
-class GroupPad extends Extended_Etherpad_API
+class GroupPad extends Etherpad_API
 {
     protected $base_url;
     protected $api_key;
@@ -29,14 +29,6 @@ class GroupPad extends Extended_Etherpad_API
             require_once plugin_dir_path(__DIR__) . '/vendor/theodo-group/llphant/src/OpenAIConfig.php';
         }
 
-//        $config = new OpenAIConfig();
-//        $config->model = get_option('options_openai_model','gpt-4o-mini-2024-07-18');
-//        $config->apiKey = get_option('options_openai_api_key');
-//        if(!$config->apiKey){
-//            new WP_Error('no_api_key', 'No OPENAI API Key found');
-//            return;
-//        }
-//        $this->chat = new OpenAIChat($config);
         $system_prompt = "Du moderierst Schulentwicklung in evangelischen Schulen, förderst pädagogische Konzepte, " .
             "digitale Tools und KI-Einsatz. " .
             "Du vermittelst praxisnah Methoden, stärkst evangelische Werte, Vielfalt und interreligiösen Dialog. " .
@@ -144,29 +136,6 @@ class GroupPad extends Extended_Etherpad_API
     }
     public function ai($max_tokens=2000, $model=null, $structured=false){
         return new $this->chat;
-//        $config = new OpenAIConfig();
-//
-//        $apiKey = get_option('options_openai_api_key');
-//        if(!$model)
-//            $model= get_option('options_openai_model','gpt-4o-mini');
-//
-//        $config->apiKey = $apiKey;
-//        $config->model = $model;
-//        $system_prompt = "Du moderierst Schulentwicklung in evangelischen Schulen, förderst pädagogische Konzepte, " .
-//            "digitale Tools und KI-Einsatz. " .
-//            "Du vermittelst praxisnah Methoden, stärkst evangelische Werte, Vielfalt und interreligiösen Dialog. " .
-//            "Du kennst deutsche Bildungsstandards und schulrechtliche Rahmenbedingungen.";
-//
-////        $config->modelOptions=[
-////            'max_tokens'=>$max_tokens,
-////            'messages' => [
-////                ["role"=>"system", "content"=>$system_prompt]
-////            ],
-////            "response_format" => $structured? ['type' => 'json_schema', 'json_schema' => ['strict' => 'true']] : ['type' => 'json_object']
-////        ];
-//        $this->chat = new OpenAIChat($config);
-//        return new $this->chat;
-
     }
     public function botID(){
         return $this->bot_author_id;
@@ -500,79 +469,8 @@ class GroupPad extends Extended_Etherpad_API
     public function getAgendaProgress(){
 
     }
-//    public function getProgress(){
-//
-//        $default_prompt = "Vergleiche den aktuellen Inhalt in einem EtherPad mit der älteren gespeicherten Version und
-//        identifiziere den Fortschritt, der in der neuen Version erzielt wurde.
-//        Achte dabei besonders auf Verbesserungen in der Argumentation, geplanter Vorhaben/Aufgaben, Klarheit und Struktur.
-//        Formuliere dann eine kurze, prägnante Analyse des Fortschritts und gib konkrete Anregungen
-//        zur weiteren Verfeinerung des Inhaltes, die die Schreiber leicht übernehmen oder anpassen können:";
-//        $etherpad_progress_prompt = get_option('etherpad_progress_prompt', $default_prompt);
-//
-//        $versions = get_current_and_last_content_version();
-//
-//        $etherpad_progress_prompt ."\n\n# Aktuelle Version: \n {$versions[0]}\n\n";
-//        $etherpad_progress_prompt ."# Ältere Version: \n {$versions[1]}";
-//
-//        $this->appendChatMessage($this->group_padID,'Mein Analyse gleich unten im Etherpad ist nur als Anregung gedacht und kann gerne angepasst werden.');
-//
-//
-//        $responseText = $this->chat->generateText($etherpad_progress_prompt);
-//
-//        $this->appendText($this->group_padID, $responseText);
-//
-//
-//    }
 
-    public function get_prompt($prompt,$context)
-    {
-        $prompts = [
-            'agenda-plausibility' => "
-            Die folgende Agenda gehört zu einer Projektarbeitsgruppe, die ein **Gesamtziel** im Kontext formulierte **Herausforderungen** erreichen möchte.
-            Überprüfe:
-            - ist  Gesamtziel klar und verständlich formuliert?
-            - trägt die Agenda und der Gruppenchat (siehe **Chatverlauf**) dazu bei , das Gesamtziel zu erreichen
-            - steht das formulierte **(Teil)ziel** des Meetings im Einklang mit dem Gesamtziel?
-            - sind die Verabredungen** und Zwischenergebnisse klar und verständlich formuliert?
-            - sind die Verabredungen und Zwischenergebnisse hilfreich, um das Ziel des Meetings zu erreichen?
-            - sind die Verabredungen und Zwischenergebnisse messbar und überprüfbar?            
-            Formuliere eine kurze, prägnante Analyse zu den bisherigen Inhalten und gib konkrete Anregungen die helfen könnten, 
-            Ziele, Verabredungen und Zwischenergebnisse zu verfeinern um die Ziele zu erreichen.",
 
-            'progress' => "Vergleiche den aktuellen Inhalt in einem EtherPad mit der älteren gespeicherten Version und 
-            identifiziere den Fortschritt, der in der neuen Version erzielt wurde. 
-            Achte dabei besonders auf Verbesserungen in der Argumentation, geplanter Vorhaben/Aufgaben, Klarheit und Struktur. 
-            Formuliere dann eine kurze, prägnante Analyse des Fortschritts und gib konkrete Anregungen 
-            zur weiteren Verfeinerung des Inhaltes, die die Schreiber leicht übernehmen oder anpassen können:",
-
-            'agenda-feedback' => "Gib ein kurzes Feedback zum bisherigen Verlauf des Meeting, 
-            soweit es sich dieser aus den Mitschriften im EtherPad und im Chatverlauf erkennen lässt.
-            Stelle Fragen, die die Gruppe dazu anregen, Ziele, Verabredungen und Zwischenergebnisse im weiteren Verlauf des Meetings zu formulieren und zu verfeinern.",
-
-            'feedback' => "Analysiere die Inhalte im EtherPad und im Chatverlauf. Gib ein Feedback, das die bisherigen Ergebnisse zusammenfasst und offene Fragen und Herausforderungen benennt.",
-
-            'brainstorm' => "Starte eine Brainstorming-Sitzung im EtherPad und sammle Ideen zu einem bestimmten Thema. 
-            Achte darauf, dass alle Ideen aufgeschrieben werden und keine Idee als schlecht oder unpassend abgetan wird.",
-            'aganda-summary' => "Fasse die Ergebnisse des Meetings in einem EtherPad zusammen.",
-
-            'summary' => "Schreibe eine Zusammenfassung des Inhalts eines EtherPads. 
-            Achte darauf, dass die Zusammenfassung klar und prägnant ist und die wichtigsten Punkte des Inhalts enthält.",
-
-            'short-summary' => "Schreibe eine komprimierte Zusammenfassung (max. 500 Zeichen) des Inhalts eines EtherPads. 
-            Achte darauf, dass die Zusammenfassung klar und prägnant ist und die wichtigsten Position enthält.",
-
-            'group-progress' => "Fasse den bisherigen Chatverlauf zum Gruppenprozess zusammen und gib einen Überblick über 
-            die bisherigen Diskussionen und Ergebnisse im Kontext von Gesamtziel und Herausforderungen.",
-
-            'share' => "Teile eine Idee, einen Gedanken oder eine Information aus dem EtherPad, 
-            der einer breiteren Gruppe von Menschen zugänglich gemacht werden soll und formuliere diese so, dass sie verständlich und ansprechend ist."
-
-        ];
-
-        $context = "\n---- \n#Kontext:\n$context ----\n";
-
-        return $prompts[$prompt].$context;
-    }
 
     public function extractHTML($html, $term) {
         $dom = new DOMDocument();

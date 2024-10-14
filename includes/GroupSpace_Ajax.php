@@ -514,64 +514,6 @@ class GroupSpace_Ajax {
         $parser = new Parsedown();
         return $parser->text($agenda);
     }
-    /**
-     * only example
-     */
-    private function handle_chat_answer() {
-        $post_id = $_POST['post_id'];
-        $groupPad = new GroupPad($post_id);
-        $padID = $groupPad->get_group_padID();
-        $messages = $groupPad->getChatHistory($padID);
-
-        $chatmessage = $groupPad->ai()->generateText($groupPad->get_prompt('chat',$messages));
-
-        $chatmessage = 'Unterstütze User namentlich im Chat oder schreibe als Moderator einen kurzen (200 Zeichen) impulsgebenden Beitrage in den Chat. : '."\n\n#Bisheriger Chatverlauf:\n".$chatmessage;
-
-        $groupPad->appendChatMessage($padID, $chatmessage, $groupPad->botID());
-        return array('success' => true);
-    }
-
-    /**
-     * only example
-     */
-    private function handle_action1() {
-        $post_id = $_POST['post_id'];
-        $groupPad = new GroupPad($post_id);
-        $padID = $groupPad->get_group_padID();
-        $messages = $groupPad->getChatHistory($padID);
-
-        $context = "\n# Chatchachrichten:\n".implode("\n", $messages);
-        $context .= "\n\n# Etherpadinhalt:\n".$groupPad->getText($padID);
-
-        $prompt ="Lies die Chatnachrichten und den Inhalt des Etherpads und schreibe einen 
-        kurzen Impuls (150 Zeichen) zur Weiterarbeit in unserer Gruppe als Chatnachricht $context";
-
-        $chatmessage = $groupPad->ai()->generateText($prompt);
-
-        $groupPad->appendChatMessage($padID, $chatmessage, $groupPad->botID());
-
-        // Implementieren Sie hier die Logik für Aktion 1
-        return array('success' => true, 'message' => 'Ich habe im CHat geantwortet');
-    }
-    /**
-     * only example
-     */
-    private function handle_action2() {
-        $post_id = $_POST['post_id'];
-        $groupPad = new GroupPad($post_id);
-        $padID = $groupPad->get_group_padID();
-        $context = $groupPad->getText($padID);
-
-        $summary = $groupPad->ai()->generateText($groupPad->get_prompt('short-summary',$context));
-
-        $groupPad->appendText($padID, "\n\nAI --------------------- \n".$summary);
-
-        $message = 'AI: ich habe eine Zusammenfassung erstellt und unten im Etherpad hinzugefügt';
-
-
-        // Implementieren Sie hier die Logik für Aktion 2
-        return array('success' => true, 'message' => $message);
-    }
 
 }
 
