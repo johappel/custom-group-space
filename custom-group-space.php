@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Custom Gruppenraum Plugin
  * Description: Fügt eine spezielle Ansicht für Gruppenräume hinzu.
- * Version: 1.0
+ * Version: 1.1
  * Author: Joachim Happel
  */
 

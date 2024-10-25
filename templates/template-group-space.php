@@ -16,12 +16,12 @@ while ( have_posts() ) : the_post();
             $blog= get_bloginfo('blogname');
             $videoconference_url = get_field('group_tool_videoconference_url', get_the_ID());
             if(empty($videoconference_url)){
-                $videoconference_url = get_option('options_videoconference_default_url', 'https://meet.jit.si');
+                $default_url = get_option('options_videoconference_default_url', 'https://meet.jit.si');
+                $videoconference_url = get_option('options_videoconference_default_url', $default_url);
             }
             $videoconference_label = get_field('group_tool_videoconference_label', get_the_ID());
             if(empty($videoconference_label)){
-                $videoconference_label = get_option('options_videoconference_default_label', 'Jitsi Meet');
-                $videoconference_label = 'Jitsi Meet';
+                $videoconference_label = get_option('options_videoconference_default_label', 'Videokonferenz');
             }
             echo '<div class="ct-container-fluid group-space-header">';
             echo '<div class="blogname">' .$blog. '</div>';

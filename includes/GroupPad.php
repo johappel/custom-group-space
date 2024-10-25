@@ -171,8 +171,8 @@ class GroupPad extends Etherpad_API
     public function set_initial_meeting()
     {
         $data = [
-            'name' => $this->search_pad('Name')['content'],
-            'goal' => $this->search_pad('Ziel')['content'],
+            'name' => strip_tags($this->search_pad('Name')['content']),
+            'goal' => strip_tags($this->search_pad('Ziel')['content']),
             'challenge' => $this->search_pad('Herausforderungen')['content']
         ];
 
@@ -432,6 +432,7 @@ class GroupPad extends Etherpad_API
         $agenda = str_replace('{STARTTIME}', $now, $agenda);
         $agenda = str_replace('{GROUPNAME}',$title , $agenda);
         $agenda = str_replace('{USER}',$current_user->display_name, $agenda);
+        $agenda = $this->markdown_to_html($agenda);
         return $agenda;
     }
     /**
