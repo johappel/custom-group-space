@@ -1,6 +1,5 @@
 {
     "require": {
-        "theodo-group/llphant": "dev-main",
         "erusev/parsedown": "^1.7",
         "league/html-to-markdown":"^5.0"
     },

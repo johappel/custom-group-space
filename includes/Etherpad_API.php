@@ -3,6 +3,7 @@
  * Etherpad API Library for WordPress
  * author: Joachim Happel
  * @see https://etherpad.org/doc/v2.2.2/#_http_api
+ * https://docs.etherpad.org/api/index.html
  */
 
 
@@ -41,6 +42,8 @@ class Etherpad_API {
         $url = $this->api_url . $endpoint;
         $params['apikey'] = $this->api_key;
         $params['headers'] = array('Content-Type' => 'multipart/form-data');
+        //error_log('Request: ' . $url . ' ' . json_encode($params));
+
         $response = wp_remote_post($url, array(
             'body' => $params,
             'timeout' => 30,
@@ -57,18 +60,7 @@ class Etherpad_API {
             return false;
         }else{
             if(!empty($return) && isset($data['data'][$return])){
-                if($endpoint === 'getChatHistory'){
-                    $messages = array();
-                    foreach($data['data'][$return] as $key => $message){
-                        $messages = array(
-                            'time' => $message['time'],
-                            'userName' => $message['userName'],
-                            'text' => $message['text']
-                        );
-                        $messages[] = sprintf('[%s] %s: %s',$message['time'], $message['userName'], $message['text']);
-                    }
-                    return implode("\n",$messages);
-                }
+
                 return $data['data'][$return];
             }
             return $data['message']==='ok';
@@ -218,6 +210,9 @@ class Etherpad_API {
         }
         return $this->make_request('getHTML', $params, 'html');
     }
+    public function appendHTML($padID, $html, $authorId = null){
+        return $this->setHTML($padID, $html, 1, $authorId);
+    }
 
     /**
      * @param $padID
@@ -253,7 +248,18 @@ class Etherpad_API {
 
         return $this->make_request('setHTML', $params);
     }
+    //getChatHead(padID)
+    //returns the chatHead (last number of the last chat-message) of the pad
 
+    public function getChatHead($padID) {
+        $params = array('padID' => $padID);
+        return $this->make_request('getChatHead', $params, 'chatHead');
+    }
+    public function getChatMessages($padID, $last_n_messages=10){
+        $end = $this->getChatHead($padID);
+        $start = $end - $last_n_messages;
+        return $this->getChatHistory($padID, $start, $end);
+    }
     public function getChatHistory($padID, $start = null, $end = null) {
         $params = array('padID' => $padID);
         if ($start !== null) {

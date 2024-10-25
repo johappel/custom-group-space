@@ -20,7 +20,7 @@ class meetjitsi{
     public function the_room(){
         $jitsi_room = get_post_meta(get_the_ID(), 'jitsi_room', true);
         if(empty($jitsi_room)){
-            $jitsi_room = sanitize_title(get_bloginfo('name').'_'.get_the_title());
+            $jitsi_room = sanitize_title(get_bloginfo('name').'_'.get_the_ID());
             update_post_meta(get_the_ID(), 'jitsi_room', $jitsi_room);
         }
         echo $jitsi_room;
