@@ -1,6 +1,8 @@
 <?php
 
-class OpenAIClient {
+require_once 'AIClientInterface.php';
+
+class OpenAIClient implements AIClientInterface {
     private $apiKey;
     private $model;
     private $maxTokens;
@@ -16,18 +18,71 @@ class OpenAIClient {
         $this->systemMessage = '';
     }
 
-    public function setSystemMessage($message) {
+    /**
+     * @inheritDoc
+     */
+    public function setSystemMessage(string $message): void {
         $this->systemMessage = $message;
     }
 
-    public function generateText($userMessage) {
+    /**
+     * @inheritDoc
+     */
+    public function generateText(string $userMessage): string {
         return $this->chat($userMessage);
     }
 
-    public function generateJson($userMessage) {
+    /**
+     * @inheritDoc
+     */
+    public function generateJson(string $userMessage): array {
         return $this->json($userMessage);
     }
 
+    /**
+     * @inheritDoc
+     */
+    public function chat(string $userMessage): string {
+        $response = $this->makeRequest($userMessage);
+
+        if (isset($response['error'])) {
+            return 'API-Fehler: ' . print_r($response, true);
+        }
+
+        if (isset($response['choices'][0]['message']['content'])) {
+            return $response['choices'][0]['message']['content'];
+        }
+
+        return 'Unerwartete API-Antwort: ' . print_r($response, true);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function json(string $userMessage): array {
+        $response = $this->makeRequest($userMessage, ['type' => 'json_object']);
+
+        if (isset($response['error'])) {
+            return ['error' => 'API-Fehler: ' . print_r($response, true)];
+        }
+
+        if (isset($response['choices'][0]['message']['content'])) {
+            $json_content = json_decode($response['choices'][0]['message']['content'], true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'JSON Dekodierungsfehler: ' . json_last_error_msg()];
+            }
+            return $json_content;
+        }
+
+        return ['error' => 'Unerwartete API-Antwort: ' . print_r($response, true)];
+    }
+
+    /**
+     * Sendet eine Anfrage an die OpenAI-Chat-API
+     * @param $userMessage
+     * @param array $responseFormat
+     * @return mixed
+     */
     private function makeRequest($userMessage, $responseFormat = ['type' => 'text']) {
         $messages = [];
 
@@ -81,37 +136,5 @@ class OpenAIClient {
         }
 
         return $decoded_response;
-    }
-
-    public function chat($userMessage) {
-        $response = $this->makeRequest($userMessage);
-
-        if (isset($response['error'])) {
-            return 'API-Fehler: ' . print_r($response, true);
-        }
-
-        if (isset($response['choices'][0]['message']['content'])) {
-            return $response['choices'][0]['message']['content'];
-        }
-
-        return 'Unerwartete API-Antwort: ' . print_r($response, true);
-    }
-
-    public function json($userMessage) {
-        $response = $this->makeRequest($userMessage, ['type' => 'json_object']);
-
-        if (isset($response['error'])) {
-            return ['error' => 'API-Fehler: ' . print_r($response, true)];
-        }
-
-        if (isset($response['choices'][0]['message']['content'])) {
-            $json_content = json_decode($response['choices'][0]['message']['content'], true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return ['error' => 'JSON Dekodierungsfehler: ' . json_last_error_msg()];
-            }
-            return $json_content;
-        }
-
-        return ['error' => 'Unerwartete API-Antwort: ' . print_r($response, true)];
     }
 }
